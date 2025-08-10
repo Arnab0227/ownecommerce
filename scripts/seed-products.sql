@@ -1,0 +1,12 @@
+-- Insert men's products
+INSERT INTO products (name, description, price, category, image_url, stock_quantity, is_featured, sku, material, care_instructions) VALUES
+('Classic White T-Shirt', 'Premium cotton t-shirt with a comfortable fit. Perfect for everyday wear.', 29.99, 'men', '/placeholder.svg?height=400&width=400', 50, true, 'MEN-TSH-001', '100% Cotton', 'Machine wash cold, tumble dry low'),
+('Denim Jeans', 'Classic straight-fit denim jeans made from premium denim fabric.', 79.99, 'men', '/placeholder.svg?height=400&width=400', 30, true, 'MEN-JEA-001', '98% Cotton, 2% Elastane', 'Machine wash cold, hang dry'),
+('Leather Jacket', 'Genuine leather jacket with a modern cut. Perfect for casual and semi-formal occasions.', 199.99, 'men', '/placeholder.svg?height=400&width=400', 15, true, 'MEN-JAC-001', 'Genuine Leather', 'Professional leather cleaning only'),
+('Cotton Polo Shirt', 'Comfortable polo shirt made from breathable cotton blend.', 45.99, 'men', '/placeholder.svg?height=400&width=400', 40, false, 'MEN-POL-001', '60% Cotton, 40% Polyester', 'Machine wash warm, tumble dry medium'),
+('Wool Sweater', 'Cozy wool sweater perfect for cooler weather.', 89.99, 'men', '/placeholder.svg?height=400&width=400', 25, false, 'MEN-SWE-001', '100% Merino Wool', 'Hand wash cold, lay flat to dry'),
+('Chino Pants', 'Versatile chino pants suitable for both casual and business casual wear.', 59.99, 'men', '/placeholder.svg?height=400&width=400', 35, false, 'MEN-CHI-001', '97% Cotton, 3% Elastane', 'Machine wash cold, tumble dry low'),
+('Hoodie', 'Comfortable cotton blend hoodie with kangaroo pocket.', 65.99, 'men', '/placeholder.svg?height=400&width=400', 45, false, 'MEN-HOO-001', '80% Cotton, 20% Polyester', 'Machine wash cold, tumble dry low'),
+('Button-Down Shirt', 'Classic button-down shirt perfect for office or casual wear.', 55.99, 'men', '/placeholder.svg?height=400&width=400', 30, false, 'MEN-BUT-001', '100% Cotton', 'Machine wash warm, iron if needed'),
+('Cargo Shorts', 'Practical cargo shorts with multiple pockets for summer wear.', 39.99, 'men', '/placeholder.svg?height=400&width=400', 40, false, 'MEN-CAR-001', '100% Cotton', 'Machine wash cold, tumble dry low'),
+('Blazer', 'Smart casual blazer that can be dressed up or down.', 129.99, 'men', '/placeholder.svg?height=400&width=400', 20, false, 'MEN-BLA-001', '70% Wool, 30% Polyester', 'Dry clean only');
