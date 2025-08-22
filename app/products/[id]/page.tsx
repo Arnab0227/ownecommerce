@@ -84,8 +84,8 @@ export default function ProductPage() {
     )
   }
 
-  const discountPercentage = product.originalPrice
-    ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
+  const discountPercentage = product.original_price
+    ? Math.round(((product.original_price - product.price) / product.original_price) * 100)
     : 0
 
   return (
@@ -130,15 +130,15 @@ export default function ProductPage() {
           <div className="space-y-2">
             <div className="flex items-center space-x-3">
               <span className="text-3xl font-bold text-green-600">₹{product.price.toLocaleString("en-IN")}</span>
-              {product.originalPrice && (
+              {product.original_price && (
                 <span className="text-xl text-gray-500 line-through">
-                  ₹{product.originalPrice.toLocaleString("en-IN")}
+                  ₹{product.original_price.toLocaleString("en-IN")}
                 </span>
               )}
             </div>
             {discountPercentage > 0 && (
               <p className="text-green-600 font-medium">
-                You save ₹{((product.originalPrice || 0) - product.price).toLocaleString("en-IN")} ({discountPercentage}% off)
+                You save ₹{((product.original_price || 0) - product.price).toLocaleString("en-IN")} ({discountPercentage}% off)
               </p>
             )}
           </div>

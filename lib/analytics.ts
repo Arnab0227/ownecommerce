@@ -257,6 +257,8 @@ export async function getAnalyticsDashboard(
   }
 }
 
+export const getAnalyticsData = getAnalyticsDashboard
+
 // Generate email report data
 export async function generateEmailReportData(): Promise<{
   period: string

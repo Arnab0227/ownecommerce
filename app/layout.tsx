@@ -11,7 +11,7 @@ import { Footer } from "@/components/footer"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
-  title: "Golden Threads - Premium Fashion Collection",
+  title: "Suktara - Premium Fashion Collection",
   description: "Discover our exquisite collection of traditional and modern clothing for men, women, and children.",
 }
 

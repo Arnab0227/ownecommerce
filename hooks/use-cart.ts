@@ -7,7 +7,7 @@ export interface Product {
   name: string
   description: string
   price: number
-  originalPrice?: number
+  original_price: number
   imageUrl?: string
   category: string
   stock: number
@@ -29,6 +29,7 @@ export function useCart() {
       const savedCart = localStorage.getItem("golden-threads-cart")
       if (savedCart) {
         const parsedCart = JSON.parse(savedCart)
+        console.log("[v0] Loaded cart from localStorage:", parsedCart)
         setItems(parsedCart)
       }
     } catch (error) {
@@ -43,8 +44,13 @@ export function useCart() {
     if (isLoaded) {
       try {
         localStorage.setItem("golden-threads-cart", JSON.stringify(items))
+        console.log("[v0] Cart saved to localStorage, dispatching event:", items.length)
         // Dispatch custom event to notify other components
-        window.dispatchEvent(new CustomEvent('cartUpdated', { detail: { items } }))
+        window.dispatchEvent(
+          new CustomEvent("cartUpdated", {
+            detail: { items, count: items.reduce((count, item) => count + item.quantity, 0) },
+          }),
+        )
       } catch (error) {
         console.error("Error saving cart to localStorage:", error)
       }
@@ -53,15 +59,13 @@ export function useCart() {
 
   const addItem = (product: Product, quantity = 1) => {
     console.log("Adding item to cart:", product, "quantity:", quantity)
-    
+
     setItems((currentItems) => {
       const existingItem = currentItems.find((item) => item.id === product.id)
 
       if (existingItem) {
         const updatedItems = currentItems.map((item) =>
-          item.id === product.id 
-            ? { ...item, quantity: item.quantity + quantity } 
-            : item
+          item.id === product.id ? { ...item, quantity: item.quantity + quantity } : item,
         )
         console.log("Updated existing item, new cart:", updatedItems)
         return updatedItems
@@ -88,21 +92,32 @@ export function useCart() {
     }
 
     setItems((currentItems) => {
-      const updatedItems = currentItems.map((item) => 
-        item.id === productId ? { ...item, quantity } : item
-      )
+      const updatedItems = currentItems.map((item) => (item.id === productId ? { ...item, quantity } : item))
       console.log("Updated quantity, new cart:", updatedItems)
       return updatedItems
     })
   }
 
   const clearCart = () => {
+    console.log("[v0] Clearing cart")
     setItems([])
-    localStorage.removeItem("golden-threads-cart")
+    try {
+      localStorage.removeItem("golden-threads-cart")
+      // Dispatch event to update UI immediately
+      window.dispatchEvent(new CustomEvent("cartUpdated", { detail: { items: [], count: 0 } }))
+    } catch (error) {
+      console.error("Error clearing cart:", error)
+    }
   }
 
+  // Fixed method name - was getTotalPrice, now getTotal
   const getTotal = () => {
     return items.reduce((total, item) => total + item.price * item.quantity, 0)
+  }
+
+  // Keep both method names for backward compatibility
+  const getTotalPrice = () => {
+    return getTotal()
   }
 
   const getItemCount = () => {
@@ -116,6 +131,7 @@ export function useCart() {
     updateQuantity,
     clearCart,
     getTotal,
+    getTotalPrice, // Added for backward compatibility
     getItemCount,
     isLoaded,
   }

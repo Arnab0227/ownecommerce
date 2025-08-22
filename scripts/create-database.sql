@@ -29,13 +29,13 @@ CREATE TABLE IF NOT EXISTS products (
   category VARCHAR(100) NOT NULL,
   image_url VARCHAR(500),
   stock_quantity INTEGER DEFAULT 0,
+  stock INTEGER DEFAULT 0, -- Added stock column for compatibility
   is_featured BOOLEAN DEFAULT false,
   is_active BOOLEAN DEFAULT true,
   sku VARCHAR(100) UNIQUE,
-  weight DECIMAL(8,2),
-  dimensions VARCHAR(100),
   material VARCHAR(255),
   care_instructions TEXT,
+  rating DECIMAL(3,2) DEFAULT 0, -- Added rating column
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS product_images (
 -- Create orders table
 CREATE TABLE IF NOT EXISTS orders (
   id SERIAL PRIMARY KEY,
-  user_id INTEGER REFERENCES users(id),
+  user_id TYPE VARCHAR(255);
   email VARCHAR(255) NOT NULL,
   status VARCHAR(50) DEFAULT 'pending',
   total_amount DECIMAL(10,2) NOT NULL,
@@ -63,6 +63,8 @@ CREATE TABLE IF NOT EXISTS orders (
   payment_method VARCHAR(100),
   payment_status VARCHAR(50) DEFAULT 'pending',
   tracking_number VARCHAR(255),
+  razorpay_order_id VARCHAR(255), 
+  razorpay_payment_id VARCHAR(255),
   notes TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -71,6 +73,7 @@ CREATE TABLE IF NOT EXISTS orders (
 -- Create order_items table
 CREATE TABLE IF NOT EXISTS order_items (
   id SERIAL PRIMARY KEY,
+  product_name VARCHAR(255),
   order_id INTEGER REFERENCES orders(id) ON DELETE CASCADE,
   product_id INTEGER REFERENCES products(id),
   quantity INTEGER NOT NULL,
@@ -82,7 +85,7 @@ CREATE TABLE IF NOT EXISTS order_items (
 -- Create cart table for persistent cart storage
 CREATE TABLE IF NOT EXISTS cart (
   id SERIAL PRIMARY KEY,
-  user_id INTEGER REFERENCES users(id),
+  user_id TYPE VARCHAR(255);
   session_id VARCHAR(255),
   product_id INTEGER REFERENCES products(id) ON DELETE CASCADE,
   quantity INTEGER NOT NULL,
@@ -94,7 +97,7 @@ CREATE TABLE IF NOT EXISTS cart (
 CREATE TABLE IF NOT EXISTS reviews (
   id SERIAL PRIMARY KEY,
   product_id INTEGER REFERENCES products(id) ON DELETE CASCADE,
-  user_id INTEGER REFERENCES users(id),
+  user_id TYPE VARCHAR(255);
   rating INTEGER CHECK (rating >= 1 AND rating <= 5),
   title VARCHAR(255),
   comment TEXT,
@@ -117,11 +120,58 @@ CREATE TABLE IF NOT EXISTS coupons (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Create settings table
+CREATE TABLE IF NOT EXISTS settings (
+    id SERIAL PRIMARY KEY,
+    key VARCHAR(255) UNIQUE NOT NULL,
+    value TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create search_analytics table
+CREATE TABLE IF NOT EXISTS search_analytics (
+    id SERIAL PRIMARY KEY,
+    query VARCHAR(255) NOT NULL,
+    results_count INTEGER DEFAULT 0,
+    user_id VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Create recent_searches table
+CREATE TABLE IF NOT EXISTS recent_searches (
+    id SERIAL PRIMARY KEY,
+    user_id VARCHAR(255),
+    query VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS addresses (
+    id SERIAL PRIMARY KEY,
+    user_id VARCHAR(255) NOT NULL,
+    name VARCHAR(255) NOT NULL,
+    phone VARCHAR(20) NOT NULL,
+    address_line_1 VARCHAR(500) NOT NULL,
+    address_line_2 VARCHAR(500),
+    city VARCHAR(100) NOT NULL,
+    state VARCHAR(100) NOT NULL,
+    postal_code VARCHAR(20) NOT NULL,
+    country VARCHAR(100) DEFAULT 'India',
+    is_default BOOLEAN DEFAULT false,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_products_category ON products(category);
-CREATE INDEX IF NOT EXISTS idx_products_model_no ON products(model_no);
+CREATE INDEX IF NOT EXISTS idx_products_stock ON products(stock_quantity);
+CREATE INDEX IF NOT EXISTS idx_products_stock_alt ON products(stock); -- Added index for stock column
+CREATE INDEX IF NOT EXISTS idx_products_sku ON products(sku);
 CREATE INDEX IF NOT EXISTS idx_products_featured ON products(is_featured);
 CREATE INDEX IF NOT EXISTS idx_products_active ON products(is_active);
+CREATE INDEX IF NOT EXISTS idx_products_name ON products(name); -- Added index for search performance
+CREATE INDEX IF NOT EXISTS idx_products_description ON products(description); -- Added index for search performance
 CREATE INDEX IF NOT EXISTS idx_orders_user_id ON orders(user_id);
 CREATE INDEX IF NOT EXISTS idx_orders_status ON orders(status);
 CREATE INDEX IF NOT EXISTS idx_order_items_order_id ON order_items(order_id);
@@ -130,7 +180,13 @@ CREATE INDEX IF NOT EXISTS idx_cart_user_id ON cart(user_id);
 CREATE INDEX IF NOT EXISTS idx_cart_session_id ON cart(session_id);
 CREATE INDEX IF NOT EXISTS idx_reviews_product_id ON reviews(product_id);
 CREATE INDEX IF NOT EXISTS idx_product_images_product_id ON product_images(product_id);
-
+CREATE INDEX IF NOT EXISTS idx_settings_key ON settings(key);
+CREATE INDEX IF NOT EXISTS idx_orders_razorpay_order_id ON orders(razorpay_order_id);
+CREATE INDEX IF NOT EXISTS idx_orders_razorpay_payment_id ON orders(razorpay_payment_id);
+CREATE INDEX IF NOT EXISTS idx_orders_user_id_varchar ON orders(user_id);
+CREATE INDEX IF NOT EXISTS idx_cart_user_id_varchar ON cart(user_id);
+CREATE INDEX IF NOT EXISTS idx_reviews_user_id_varchar ON reviews(user_id);
+CREATE INDEX IF NOT EXISTS idx_addresses_user_id ON addresses(user_id);
 -- Insert default categories
 INSERT INTO categories (name, slug, description) VALUES
 ('Men', 'men', 'Men''s clothing and accessories'),

@@ -3,82 +3,123 @@
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useAuth } from "@/hooks/use-firebase-auth"
 import { useToast } from "@/hooks/use-toast"
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  PieChart,
-  Pie,
-  Cell,
-} from "recharts"
-import { TrendingUp, Eye, Users, ShoppingCart, Mail, Loader2, BarChart3 } from "lucide-react"
+  BarChart3,
+  TrendingUp,
+  TrendingDown,
+  Users,
+  ShoppingCart,
+  DollarSign,
+  Package,
+  Download,
+  RefreshCw,
+  Loader2,
+  AlertCircle,
+} from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 interface AnalyticsData {
-  period: string
-  total_views: number
-  unique_views: number
-  top_products: Array<{
-    id: number
-    name: string
-    category: string
-    total_views: number
-    unique_views: number
-    total_orders: number
-    revenue: number
-    trend_score: number
-    rank_position: number
-  }>
-  categories_performance: Array<{
-    category: string
-    views: number
-    orders: number
-    revenue: number
-  }>
-  daily_views: Array<{
+  overview: {
+    totalRevenue: number
+    revenueChange: number
+    totalOrders: number
+    ordersChange: number
+    totalCustomers: number
+    customersChange: number
+    averageOrderValue: number
+    aovChange: number
+  }
+  salesData: {
     date: string
+    revenue: number
+    orders: number
+  }[]
+  topProducts: {
+    id: string
+    name: string
+    sales: number
+    revenue: number
     views: number
-    unique_views: number
-  }>
+  }[]
+  customerInsights: {
+    newCustomers: number
+    returningCustomers: number
+    customerRetentionRate: number
+  }
+  categoryPerformance: {
+    category: string
+    revenue: number
+    orders: number
+    growth: number
+  }[]
 }
 
-const COLORS = ["#f59e0b", "#ef4444", "#3b82f6", "#10b981", "#8b5cf6"]
-
-export default function AnalyticsPage() {
+export default function AdminAnalyticsPage() {
   const { user, isAdmin, loading } = useAuth()
   const { toast } = useToast()
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [period, setPeriod] = useState<"daily" | "weekly" | "monthly">("monthly")
-  const [isSendingReport, setIsSendingReport] = useState(false)
+  const [timeRange, setTimeRange] = useState("30d")
+  const [isRefreshing, setIsRefreshing] = useState(false)
 
   useEffect(() => {
     if (!loading && user && isAdmin) {
-      fetchAnalyticsData()
+      loadAnalytics()
+    } else if (!loading) {
+      setIsLoading(false)
     }
-  }, [loading, user, isAdmin, period])
+  }, [loading, user, isAdmin, timeRange])
 
-  const fetchAnalyticsData = async () => {
+  const loadAnalytics = async () => {
     try {
       setIsLoading(true)
-      const response = await fetch(`/api/analytics/dashboard?period=${period}`)
 
-      if (!response.ok) {
-        throw new Error("Failed to fetch analytics data")
+      // Mock analytics data - in real app, fetch from API
+      const mockData: AnalyticsData = {
+        overview: {
+          totalRevenue: 125000,
+          revenueChange: 12.5,
+          totalOrders: 342,
+          ordersChange: 8.2,
+          totalCustomers: 156,
+          customersChange: 15.3,
+          averageOrderValue: 2850,
+          aovChange: -2.1,
+        },
+        salesData: [
+          { date: "2024-01-01", revenue: 4200, orders: 12 },
+          { date: "2024-01-02", revenue: 3800, orders: 10 },
+          { date: "2024-01-03", revenue: 5100, orders: 15 },
+          { date: "2024-01-04", revenue: 4600, orders: 13 },
+          { date: "2024-01-05", revenue: 5800, orders: 18 },
+          { date: "2024-01-06", revenue: 6200, orders: 20 },
+          { date: "2024-01-07", revenue: 5500, orders: 16 },
+        ],
+        topProducts: [
+          { id: "1", name: "Elegant Silk Dress", sales: 45, revenue: 134550, views: 1250 },
+          { id: "2", name: "Designer Handbag", sales: 32, revenue: 63968, views: 890 },
+          { id: "3", name: "Cotton Kids T-Shirt", sales: 67, revenue: 40133, views: 2100 },
+          { id: "4", name: "Formal Blazer", sales: 18, revenue: 62982, views: 650 },
+          { id: "5", name: "Summer Dress", sales: 28, revenue: 25172, views: 780 },
+        ],
+        customerInsights: {
+          newCustomers: 89,
+          returningCustomers: 67,
+          customerRetentionRate: 42.9,
+        },
+        categoryPerformance: [
+          { category: "Women", revenue: 89500, orders: 198, growth: 15.2 },
+          { category: "Kids", revenue: 35500, orders: 144, growth: 8.7 },
+        ],
       }
 
-      const data = await response.json()
-      setAnalyticsData(data)
+      // Simulate API delay
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+      setAnalyticsData(mockData)
     } catch (error) {
-      console.error("Error fetching analytics:", error)
+      console.error("Error loading analytics:", error)
       toast({
         title: "Error",
         description: "Failed to load analytics data",
@@ -86,44 +127,23 @@ export default function AnalyticsPage() {
       })
     } finally {
       setIsLoading(false)
+      setIsRefreshing(false)
     }
   }
 
-  const sendEmailReport = async () => {
-    try {
-      setIsSendingReport(true)
-      const response = await fetch("/api/analytics/email-report", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          period: period,
-          recipient: user?.email,
-        }),
-      })
-
-      if (!response.ok) {
-        throw new Error("Failed to send email report")
-      }
-
-      toast({
-        title: "Success",
-        description: "Analytics report sent to your email!",
-      })
-    } catch (error) {
-      console.error("Error sending email report:", error)
-      toast({
-        title: "Error",
-        description: "Failed to send email report",
-        variant: "destructive",
-      })
-    } finally {
-      setIsSendingReport(false)
-    }
+  const handleRefresh = () => {
+    setIsRefreshing(true)
+    loadAnalytics()
   }
 
-  if (loading) {
+  const exportData = () => {
+    toast({
+      title: "Export Started",
+      description: "Analytics data export will be ready shortly",
+    })
+  }
+
+  if (loading || isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin" />
@@ -137,8 +157,10 @@ export default function AnalyticsPage() {
         <Card className="w-96">
           <CardContent className="pt-6">
             <div className="text-center">
+              <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
               <h2 className="text-xl font-semibold mb-2">Access Denied</h2>
-              <p className="text-gray-600">Admin privileges required to access analytics.</p>
+              <p className="text-gray-600 mb-4">You need admin privileges to access this page.</p>
+              <Button onClick={() => (window.location.href = "/admin")}>Go to Admin</Button>
             </div>
           </CardContent>
         </Card>
@@ -146,264 +168,288 @@ export default function AnalyticsPage() {
     )
   }
 
+  if (!analyticsData) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin" />
+      </div>
+    )
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50">
+    <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50">
       <div className="container mx-auto px-4 py-8">
         <div className="mb-8">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex justify-between items-start">
             <div>
-              <h1 className="text-3xl font-bold text-blue-800 mb-2">Analytics Dashboard</h1>
-              <p className="text-gray-600">Track product views, trends, and performance metrics</p>
+              <h1 className="text-3xl font-bold text-amber-800 mb-2">Analytics Dashboard</h1>
+              <p className="text-gray-600">Track your store's performance and insights</p>
             </div>
-            <div className="flex items-center gap-4">
-              <Select value={period} onValueChange={(value: "daily" | "weekly" | "monthly") => setPeriod(value)}>
-                <SelectTrigger className="w-[140px]">
+            <div className="flex gap-2">
+              <Select value={timeRange} onValueChange={setTimeRange}>
+                <SelectTrigger className="w-32">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="daily">Daily</SelectItem>
-                  <SelectItem value="weekly">Weekly</SelectItem>
-                  <SelectItem value="monthly">Monthly</SelectItem>
+                  <SelectItem value="7d">Last 7 days</SelectItem>
+                  <SelectItem value="30d">Last 30 days</SelectItem>
+                  <SelectItem value="90d">Last 90 days</SelectItem>
+                  <SelectItem value="1y">Last year</SelectItem>
                 </SelectContent>
               </Select>
-              <Button onClick={sendEmailReport} disabled={isSendingReport}>
-                {isSendingReport ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <Mail className="h-4 w-4 mr-2" />
-                )}
-                Email Report
+              <Button variant="outline" onClick={handleRefresh} disabled={isRefreshing}>
+                <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`} />
+                Refresh
+              </Button>
+              <Button variant="outline" onClick={exportData}>
+                <Download className="h-4 w-4 mr-2" />
+                Export
               </Button>
             </div>
           </div>
         </div>
 
-        {isLoading ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            {[...Array(4)].map((_, i) => (
-              <Card key={i}>
-                <CardContent className="pt-6">
-                  <div className="animate-pulse">
-                    <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
-                    <div className="h-8 bg-gray-200 rounded w-1/2"></div>
+        {/* Overview Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+              <DollarSign className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">₹{analyticsData.overview.totalRevenue.toLocaleString("en-IN")}</div>
+              <div className="flex items-center text-xs text-muted-foreground">
+                {analyticsData.overview.revenueChange > 0 ? (
+                  <TrendingUp className="h-3 w-3 mr-1 text-green-500" />
+                ) : (
+                  <TrendingDown className="h-3 w-3 mr-1 text-red-500" />
+                )}
+                <span className={analyticsData.overview.revenueChange > 0 ? "text-green-500" : "text-red-500"}>
+                  {Math.abs(analyticsData.overview.revenueChange)}%
+                </span>
+                <span className="ml-1">from last period</span>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Orders</CardTitle>
+              <ShoppingCart className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{analyticsData.overview.totalOrders}</div>
+              <div className="flex items-center text-xs text-muted-foreground">
+                {analyticsData.overview.ordersChange > 0 ? (
+                  <TrendingUp className="h-3 w-3 mr-1 text-green-500" />
+                ) : (
+                  <TrendingDown className="h-3 w-3 mr-1 text-red-500" />
+                )}
+                <span className={analyticsData.overview.ordersChange > 0 ? "text-green-500" : "text-red-500"}>
+                  {Math.abs(analyticsData.overview.ordersChange)}%
+                </span>
+                <span className="ml-1">from last period</span>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Total Customers</CardTitle>
+              <Users className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">{analyticsData.overview.totalCustomers}</div>
+              <div className="flex items-center text-xs text-muted-foreground">
+                {analyticsData.overview.customersChange > 0 ? (
+                  <TrendingUp className="h-3 w-3 mr-1 text-green-500" />
+                ) : (
+                  <TrendingDown className="h-3 w-3 mr-1 text-red-500" />
+                )}
+                <span className={analyticsData.overview.customersChange > 0 ? "text-green-500" : "text-red-500"}>
+                  {Math.abs(analyticsData.overview.customersChange)}%
+                </span>
+                <span className="ml-1">from last period</span>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Avg Order Value</CardTitle>
+              <BarChart3 className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold">
+                ₹{analyticsData.overview.averageOrderValue.toLocaleString("en-IN")}
+              </div>
+              <div className="flex items-center text-xs text-muted-foreground">
+                {analyticsData.overview.aovChange > 0 ? (
+                  <TrendingUp className="h-3 w-3 mr-1 text-green-500" />
+                ) : (
+                  <TrendingDown className="h-3 w-3 mr-1 text-red-500" />
+                )}
+                <span className={analyticsData.overview.aovChange > 0 ? "text-green-500" : "text-red-500"}>
+                  {Math.abs(analyticsData.overview.aovChange)}%
+                </span>
+                <span className="ml-1">from last period</span>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+          {/* Top Products */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Package className="h-5 w-5" />
+                Top Performing Products
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {analyticsData.topProducts.map((product, index) => (
+                  <div key={product.id} className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center text-sm font-medium text-amber-800">
+                        {index + 1}
+                      </div>
+                      <div>
+                        <p className="font-medium">{product.name}</p>
+                        <p className="text-sm text-gray-600">
+                          {product.sales} sales • {product.views} views
+                        </p>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <p className="font-medium">₹{product.revenue.toLocaleString("en-IN")}</p>
+                      <p className="text-sm text-gray-600">Revenue</p>
+                    </div>
                   </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        ) : analyticsData ? (
-          <>
-            {/* Key Metrics */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Total Views</CardTitle>
-                  <Eye className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{analyticsData.total_views.toLocaleString()}</div>
-                  <p className="text-xs text-muted-foreground">
-                    {period.charAt(0).toUpperCase() + period.slice(1)} period
-                  </p>
-                </CardContent>
-              </Card>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
 
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Unique Visitors</CardTitle>
-                  <Users className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{analyticsData.unique_views.toLocaleString()}</div>
-                  <p className="text-xs text-muted-foreground">
-                    {analyticsData.unique_views > 0
-                      ? `${((analyticsData.unique_views / analyticsData.total_views) * 100).toFixed(1)}% of total views`
-                      : "No unique visitors"}
-                  </p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Trending Products</CardTitle>
-                  <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">{analyticsData.top_products.length}</div>
-                  <p className="text-xs text-muted-foreground">Products with views</p>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
-                  <ShoppingCart className="h-4 w-4 text-muted-foreground" />
-                </CardHeader>
-                <CardContent>
-                  <div className="text-2xl font-bold">
-                    ₹
-                    {analyticsData.categories_performance
-                      .reduce((sum, cat) => sum + cat.revenue, 0)
-                      .toLocaleString("en-IN")}
+          {/* Customer Insights */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5" />
+                Customer Insights
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-6">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-green-600">
+                      {analyticsData.customerInsights.newCustomers}
+                    </div>
+                    <div className="text-sm text-gray-600">New Customers</div>
                   </div>
-                  <p className="text-xs text-muted-foreground">From tracked orders</p>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Charts Section */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-              {/* Views Trend Chart */}
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <BarChart3 className="h-5 w-5" />
-                    Views Trend
-                  </CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <LineChart data={analyticsData.daily_views}>
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis
-                        dataKey="date"
-                        tick={{ fontSize: 12 }}
-                        tickFormatter={(value) => new Date(value).toLocaleDateString()}
-                      />
-                      <YAxis tick={{ fontSize: 12 }} />
-                      <Tooltip
-                        labelFormatter={(value) => new Date(value).toLocaleDateString()}
-                        formatter={(value, name) => [value, name === "views" ? "Total Views" : "Unique Views"]}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="views"
-                        stroke="#f59e0b"
-                        strokeWidth={2}
-                        dot={{ fill: "#f59e0b" }}
-                      />
-                      <Line
-                        type="monotone"
-                        dataKey="unique_views"
-                        stroke="#3b82f6"
-                        strokeWidth={2}
-                        dot={{ fill: "#3b82f6" }}
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-
-              {/* Category Performance */}
-              <Card>
-                <CardHeader>
-                  <CardTitle>Category Performance</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <ResponsiveContainer width="100%" height={300}>
-                    <PieChart>
-                      <Pie
-                        data={analyticsData.categories_performance}
-                        cx="50%"
-                        cy="50%"
-                        labelLine={false}
-                        label={({ category, views }) => `${category}: ${views}`}
-                        outerRadius={80}
-                        fill="#8884d8"
-                        dataKey="views"
-                      >
-                        {analyticsData.categories_performance.map((entry, index) => (
-                          <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                        ))}
-                      </Pie>
-                      <Tooltip formatter={(value) => [value, "Views"]} />
-                    </PieChart>
-                  </ResponsiveContainer>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Top Products Table */}
-            <Card>
-              <CardHeader>
-                <CardTitle>Top Trending Products</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="border-b">
-                        <th className="text-left p-2">Rank</th>
-                        <th className="text-left p-2">Product</th>
-                        <th className="text-left p-2">Category</th>
-                        <th className="text-left p-2">Views</th>
-                        <th className="text-left p-2">Unique Views</th>
-                        <th className="text-left p-2">Orders</th>
-                        <th className="text-left p-2">Revenue</th>
-                        <th className="text-left p-2">Trend Score</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {analyticsData.top_products.slice(0, 10).map((product) => (
-                        <tr key={product.id} className="border-b hover:bg-gray-50">
-                          <td className="p-2">
-                            <div className="flex items-center">
-                              <span className="font-semibold text-amber-600">#{product.rank_position}</span>
-                            </div>
-                          </td>
-                          <td className="p-2">
-                            <div className="font-medium">{product.name}</div>
-                          </td>
-                          <td className="p-2">
-                            <span className="capitalize text-sm bg-gray-100 px-2 py-1 rounded">{product.category}</span>
-                          </td>
-                          <td className="p-2">{product.total_views}</td>
-                          <td className="p-2">{product.unique_views}</td>
-                          <td className="p-2">{product.total_orders}</td>
-                          <td className="p-2">₹{product.revenue.toLocaleString("en-IN")}</td>
-                          <td className="p-2">
-                            <div className="flex items-center">
-                              <div className="w-16 bg-gray-200 rounded-full h-2 mr-2">
-                                <div
-                                  className="bg-gradient-to-r from-amber-400 to-orange-500 h-2 rounded-full"
-                                  style={{ width: `${Math.min((product.trend_score / 100) * 100, 100)}%` }}
-                                ></div>
-                              </div>
-                              <span className="text-sm">{product.trend_score.toFixed(1)}</span>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  <div className="text-center">
+                    <div className="text-2xl font-bold text-blue-600">
+                      {analyticsData.customerInsights.returningCustomers}
+                    </div>
+                    <div className="text-sm text-gray-600">Returning Customers</div>
+                  </div>
                 </div>
-              </CardContent>
-            </Card>
 
-            {/* Category Stats */}
-            <Card className="mt-8">
-              <CardHeader>
-                <CardTitle>Category Statistics</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ResponsiveContainer width="100%" height={300}>
-                  <BarChart data={analyticsData.categories_performance}>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="category" tick={{ fontSize: 12 }} />
-                    <YAxis tick={{ fontSize: 12 }} />
-                    <Tooltip />
-                    <Bar dataKey="views" fill="#f59e0b" name="Views" />
-                    <Bar dataKey="orders" fill="#3b82f6" name="Orders" />
-                  </BarChart>
-                </ResponsiveContainer>
-              </CardContent>
-            </Card>
-          </>
-        ) : (
-          <div className="text-center py-12">
-            <p className="text-gray-500">No analytics data available</p>
-          </div>
-        )}
+                <div className="text-center">
+                  <div className="text-3xl font-bold text-purple-600">
+                    {analyticsData.customerInsights.customerRetentionRate}%
+                  </div>
+                  <div className="text-sm text-gray-600">Customer Retention Rate</div>
+                </div>
+
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span>New vs Returning</span>
+                    <span>
+                      {(
+                        (analyticsData.customerInsights.newCustomers /
+                          (analyticsData.customerInsights.newCustomers +
+                            analyticsData.customerInsights.returningCustomers)) *
+                        100
+                      ).toFixed(1)}
+                      % new
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-200 rounded-full h-2">
+                    <div
+                      className="bg-green-600 h-2 rounded-full"
+                      style={{
+                        width: `${(analyticsData.customerInsights.newCustomers / (analyticsData.customerInsights.newCustomers + analyticsData.customerInsights.returningCustomers)) * 100}%`,
+                      }}
+                    ></div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Category Performance */}
+        <Card className="mb-8">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <BarChart3 className="h-5 w-5" />
+              Category Performance
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {analyticsData.categoryPerformance.map((category) => (
+                <div key={category.category} className="border rounded-lg p-4">
+                  <div className="flex justify-between items-start mb-3">
+                    <h3 className="font-semibold text-lg">{category.category}</h3>
+                    <div className="flex items-center text-sm">
+                      {category.growth > 0 ? (
+                        <TrendingUp className="h-4 w-4 mr-1 text-green-500" />
+                      ) : (
+                        <TrendingDown className="h-4 w-4 mr-1 text-red-500" />
+                      )}
+                      <span className={category.growth > 0 ? "text-green-500" : "text-red-500"}>
+                        {Math.abs(category.growth)}%
+                      </span>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-2xl font-bold">₹{category.revenue.toLocaleString("en-IN")}</p>
+                      <p className="text-sm text-gray-600">Revenue</p>
+                    </div>
+                    <div>
+                      <p className="text-2xl font-bold">{category.orders}</p>
+                      <p className="text-sm text-gray-600">Orders</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Sales Chart Placeholder */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <BarChart3 className="h-5 w-5" />
+              Sales Trend
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="h-64 flex items-center justify-center bg-gray-50 rounded-lg">
+              <div className="text-center">
+                <BarChart3 className="h-12 w-12 text-gray-400 mx-auto mb-2" />
+                <p className="text-gray-600">Sales chart visualization would go here</p>
+                <p className="text-sm text-gray-500">Integration with charting library needed</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   )

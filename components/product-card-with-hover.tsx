@@ -52,8 +52,8 @@ export function ProductCardWithHover({ product }: ProductCardWithHoverProps) {
     setCurrentImageIndex((prev) => (prev - 1 + productImages.length) % productImages.length)
   }
 
-  const discountPercentage = product.originalPrice
-    ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
+  const discountPercentage = product.original_price
+    ? Math.round(((product.original_price - product.price) / product.original_price) * 100)
     : 0
 
   return (
@@ -94,9 +94,9 @@ export function ProductCardWithHover({ product }: ProductCardWithHoverProps) {
             <span className="text-xl sm:text-2xl font-bold text-amber-600">
               ₹{product.price.toLocaleString("en-IN")}
             </span>
-            {product.originalPrice && (
+            {product.original_price && (
               <span className="text-sm text-gray-500 line-through">
-                ₹{product.originalPrice.toLocaleString("en-IN")}
+                ₹{product.original_price.toLocaleString("en-IN")}
               </span>
             )}
           </div>
@@ -188,10 +188,10 @@ export function ProductCardWithHover({ product }: ProductCardWithHoverProps) {
 
                 <div className="flex items-center space-x-4 mb-6">
                   <span className="text-4xl font-bold text-amber-600">₹{product.price.toLocaleString("en-IN")}</span>
-                  {product.originalPrice && (
+                  {product.original_price && (
                     <>
                       <span className="text-xl text-gray-500 line-through">
-                        ₹{product.originalPrice.toLocaleString("en-IN")}
+                        ₹{product.original_price.toLocaleString("en-IN")}
                       </span>
                       <Badge className="bg-gradient-to-r from-red-500 to-red-600 text-white">
                         {discountPercentage}% OFF

@@ -4,60 +4,32 @@ import { neon } from "@neondatabase/serverless"
 export async function GET() {
   try {
     if (!process.env.DATABASE_URL) {
-      return NextResponse.json({ error: "Database not configured" }, { status: 500 })
+      console.log("No DATABASE_URL found, returning empty array")
+      return NextResponse.json([])
     }
 
     const sql = neon(process.env.DATABASE_URL)
 
-    // Check what columns exist in the products table
-    const columnCheck = await sql`
-      SELECT column_name 
-      FROM information_schema.columns 
-      WHERE table_name = 'products'
+    const products = await sql`
+      SELECT 
+        id,
+        name,
+        description,
+        price,
+        original_price,
+        category,
+        COALESCE(stock_quantity, 0) as stock_quantity,
+        image_url,
+        is_featured,
+        is_active,
+        sku,
+        material,
+        care_instructions,
+        created_at,
+        updated_at
+      FROM products 
+      ORDER BY created_at DESC
     `
-
-    const availableColumns = columnCheck.map((row) => row.column_name)
-    console.log("Available columns:", availableColumns)
-
-    // Build query based on available columns
-    let products
-    if (availableColumns.includes("stock_quantity")) {
-      products = await sql`
-        SELECT 
-          id,
-          name,
-          description,
-          price,
-          (price * 1.3)::integer as "originalPrice",
-          category,
-          stock_quantity as stock,
-          image_url as "imageUrl",
-          created_at,
-          updated_at,
-          is_active,
-          is_featured
-        FROM products 
-        ORDER BY created_at DESC
-      `
-    } else {
-      products = await sql`
-        SELECT 
-          id,
-          name,
-          description,
-          price,
-          (price * 1.3)::integer as "originalPrice",
-          category,
-          stock,
-          image_url as "imageUrl",
-          created_at,
-          updated_at,
-          is_active,
-          is_featured
-        FROM products 
-        ORDER BY created_at DESC
-      `
-    }
 
     return NextResponse.json(products)
   } catch (error) {
@@ -72,89 +44,136 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Database not configured" }, { status: 500 })
     }
 
+    const sql = neon(process.env.DATABASE_URL)
     const body = await request.json()
-    console.log("Received product data:", body)
 
-    const { name, description, price, originalPrice, category, stock, image_url } = body
+    const {
+      name,
+      description,
+      price,
+      original_price,
+      category,
+      stock_quantity,
+      image_url,
+      is_featured,
+      is_active,
+      sku,
+      material,
+      care_instructions,
+    } = body
 
-    // Validate required fields
-    if (!name || !description || !price || !category) {
+    if (!name || !description || !price || !category ) {
       return NextResponse.json(
-        { error: "Missing required fields: name, description, price, category" },
+        {
+          error: "Missing required fields",
+          required: ["name", "description", "price", "category"],
+        },
         { status: 400 },
       )
     }
 
-    const sql = neon(process.env.DATABASE_URL)
-
-    // Check what columns exist in the products table
-    const columnCheck = await sql`
-      SELECT column_name 
-      FROM information_schema.columns 
-      WHERE table_name = 'products'
+    const result = await sql`
+      INSERT INTO products (
+        name,  
+        description, 
+        price, 
+        original_price, 
+        category, 
+        stock_quantity, 
+        image_url,
+        is_featured,
+        is_active,
+        sku,
+        material,
+        care_instructions
+      )
+      VALUES (
+        ${name},  
+        ${description}, 
+        ${price}, 
+        ${original_price}, 
+        ${category}, 
+        ${stock_quantity || 0}, 
+        ${image_url || `/placeholder.svg?height=400&width=300&text=${encodeURIComponent(name)}`},
+        ${is_featured || false},
+        ${is_active !== false},
+        ${sku},
+        ${material || null},
+        ${care_instructions || null}
+      )
+      RETURNING *
     `
 
-    const availableColumns = columnCheck.map((row) => row.column_name)
-    console.log("Available columns:", availableColumns)
-
-    // Insert based on available columns
-    let result
-    if (availableColumns.includes("stock_quantity")) {
-      // Use stock_quantity column
-      result = await sql`
-        INSERT INTO products (
-          name, 
-          description, 
-          price, 
-          category, 
-          stock_quantity, 
-          image_url,
-          is_active,
-          is_featured
-        )
-        VALUES (
-          ${name}, 
-          ${description}, 
-          ${price}, 
-          ${category}, 
-          ${stock || 0}, 
-          ${image_url || "/placeholder.svg?height=400&width=300"},
-          true,
-          false
-        )
-        RETURNING *
-      `
-    } else {
-      // Use stock column
-      result = await sql`
-        INSERT INTO products (
-          name, 
-          description, 
-          price, 
-          category, 
-          stock, 
-          image_url,
-          is_active,
-          is_featured
-        )
-        VALUES (
-          ${name}, 
-          ${description}, 
-          ${price}, 
-          ${category}, 
-          ${stock || 0}, 
-          ${image_url || "/placeholder.svg?height=400&width=300"},
-          true,
-          false
-        )
-        RETURNING *
-      `
-    }
-
-    console.log("Product created successfully:", result[0])
-    return NextResponse.json(result[0], { status: 201 })
+    return NextResponse.json(result[0])
   } catch (error) {
     console.error("Error creating product:", error)
-    return NextResponse.json({ error: "Failed to add product" }, { status: 500 })
+    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred"
+    return NextResponse.json({ error: "Failed to create product", details: errorMessage }, { status: 500 })
+  }
+}
+
+export async function PUT(request: Request) {
+  try {
+    if (!process.env.DATABASE_URL) {
+      return NextResponse.json({ error: "Database not configured" }, { status: 500 })
+    }
+
+    const sql = neon(process.env.DATABASE_URL)
+    const body = await request.json()
+
+    const {
+      id,
+      name,
+      description,
+      price,
+      original_price,
+      category,
+      stock_quantity,
+      image_url,
+      is_featured,
+      is_active,
+      sku,
+      material,
+      care_instructions,
+    } = body
+
+    if (!id || !name || !description || !price || !category ) {
+      return NextResponse.json(
+        {
+          error: "Missing required fields",
+          required: ["id", "name", "description", "price", "category"],
+        },
+        { status: 400 },
+      )
+    }
+
+    const result = await sql`
+      UPDATE products SET
+        name = ${name},
+        description = ${description},
+        price = ${price},
+        original_price = ${original_price },
+        category = ${category},
+        stock_quantity = ${stock_quantity || 0},
+        image_url = ${image_url || `/placeholder.svg?height=400&width=300&text=${encodeURIComponent(name)}`},
+        is_featured = ${is_featured || false},
+        is_active = ${is_active !== false},
+        sku = ${sku},
+        material = ${material || null},
+        care_instructions = ${care_instructions || null},
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ${id}
+      RETURNING *
+    `
+
+    if (result.length === 0) {
+      return NextResponse.json({ error: "Product not found" }, { status: 404 })
+    }
+
+    return NextResponse.json(result[0])
+  } catch (error) {
+    console.error("Error updating product:", error)
+    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred"
+    return NextResponse.json({ error: "Failed to update product", details: errorMessage }, { status: 500 })
   }
 }

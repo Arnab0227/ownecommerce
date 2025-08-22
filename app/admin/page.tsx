@@ -11,18 +11,48 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useAuth } from "@/hooks/use-firebase-auth"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2, Plus, Edit, Trash2, Shield, AlertCircle, Package, ShoppingCart, Users, TrendingUp, BarChart3, Settings, Mail, Calendar, DollarSign } from 'lucide-react'
+import {
+  Loader2,
+  Plus,
+  Edit,
+  Trash2,
+  Shield,
+  AlertCircle,
+  Package,
+  ShoppingCart,
+  Users,
+  TrendingUp,
+  BarChart3,
+  Settings,
+  Mail,
+  Calendar,
+  DollarSign,
+  Save,
+  X,
+  AlertTriangle,
+} from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 
 interface Product {
   id: string
   name: string
-  model_no: string
+  sku: string // Changed from model_no to sku to match API
   description: string
   price: number
   original_price: number
   category: string
-  stock: number
+  stock_quantity: number // Changed from stock to stock_quantity to match API
   image_url: string
 }
 
@@ -44,25 +74,20 @@ export default function AdminPage() {
   const [isLoadingStats, setIsLoadingStats] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [activeTab, setActiveTab] = useState<"dashboard" | "products">("dashboard")
+  const [editingProduct, setEditingProduct] = useState<Product | null>(null)
+  const [isDeleting, setIsDeleting] = useState<string | null>(null)
+  const [isDeletingAll, setIsDeletingAll] = useState(false)
 
   const [formData, setFormData] = useState({
     name: "",
-    model_no: "",
+    sku: "", // Changed from model_no to sku
     description: "",
     price: "",
     original_price: "",
     category: "",
-    stock: "",
+    stock_quantity: "", // Changed from stock to stock_quantity
     image_url: "",
   })
-
-  // Debug information
-  useEffect(() => {
-    console.log("Admin Page - User:", user?.email)
-    console.log("Admin Page - Is Admin:", isAdmin)
-    console.log("Admin Page - Loading:", loading)
-    console.log("Admin Email from env:", process.env.NEXT_PUBLIC_ADMIN_EMAIL)
-  }, [user, isAdmin, loading])
 
   useEffect(() => {
     if (!loading && user && isAdmin) {
@@ -98,21 +123,48 @@ export default function AdminPage() {
   const fetchAdminStats = async () => {
     try {
       setIsLoadingStats(true)
-      // Mock stats for now - you can implement actual API endpoints
-      const mockStats: AdminStats = {
-        total_products: products.length || 156,
-        total_orders: 1247,
-        total_revenue: 89650,
-        recent_orders: 23,
-        low_stock_products: 8,
-        trending_products: 12,
+
+      // Fetch real stats from API
+      const [productsRes, ordersRes] = await Promise.all([fetch("/api/admin/products"), fetch("/api/admin/orders")])
+
+      const realStats: AdminStats = {
+        total_products: 0,
+        total_orders: 0,
+        total_revenue: 0,
+        recent_orders: 0,
+        low_stock_products: 0,
+        trending_products: 0,
       }
 
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-      setStats(mockStats)
+      if (productsRes.ok) {
+        const productsData = await productsRes.json()
+        realStats.total_products = productsData.length
+        realStats.low_stock_products = productsData.filter((p: Product) => p.stock_quantity < 10).length
+      }
+
+      if (ordersRes.ok) {
+        const ordersData = await ordersRes.json()
+        realStats.total_orders = ordersData.length
+        realStats.total_revenue = ordersData.reduce((sum: number, order: any) => sum + order.total_amount, 0)
+
+        // Recent orders (last 7 days)
+        const weekAgo = new Date()
+        weekAgo.setDate(weekAgo.getDate() - 7)
+        realStats.recent_orders = ordersData.filter((order: any) => new Date(order.created_at) > weekAgo).length
+      }
+
+      setStats(realStats)
     } catch (error) {
       console.error("Error fetching admin stats:", error)
+      // Fallback to mock data if API fails
+      setStats({
+        total_products: products.length || 0,
+        total_orders: 0,
+        total_revenue: 0,
+        recent_orders: 0,
+        low_stock_products: 0,
+        trending_products: 0,
+      })
     } finally {
       setIsLoadingStats(false)
     }
@@ -123,52 +175,154 @@ export default function AdminPage() {
     setIsSubmitting(true)
 
     try {
-      const response = await fetch("/api/admin/products", {
-        method: "POST",
+      const url = editingProduct ? `/api/admin/products/${editingProduct.id}` : "/api/admin/products"
+      const method = editingProduct ? "PUT" : "POST"
+
+      const response = await fetch(url, {
+        method,
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
           name: formData.name,
-          model_no: formData.model_no,
+          sku: formData.sku, // Changed from model_no to sku
           description: formData.description,
           price: Number.parseFloat(formData.price),
-          originalPrice: Number.parseFloat(formData.original_price),
+          original_price: Number.parseFloat(formData.original_price),
           category: formData.category,
-          stock: Number.parseInt(formData.stock),
+          stock_quantity: Number.parseInt(formData.stock_quantity), // Changed from stock to stock_quantity
           image_url: formData.image_url || "/placeholder.svg?height=400&width=300",
         }),
       })
 
       if (response.ok) {
-        const newProduct = await response.json()
-        setProducts([newProduct, ...products])
+        const productData = await response.json()
+
+        if (editingProduct) {
+          // Update existing product
+          setProducts(products.map((p) => (p.id === editingProduct.id ? productData : p)))
+          toast({
+            title: "Success",
+            description: "Product updated successfully",
+          })
+        } else {
+          // Add new product
+          setProducts([productData, ...products])
+          toast({
+            title: "Success",
+            description: "Product added successfully",
+          })
+        }
+
+        // Reset form
         setFormData({
           name: "",
-          model_no: "",
+          sku: "", // Changed from model_no to sku
           description: "",
           price: "",
           original_price: "",
           category: "",
-          stock: "",
+          stock_quantity: "", // Changed from stock to stock_quantity
           image_url: "",
         })
-        toast({
-          title: "Success",
-          description: "Product added successfully",
-        })
+        setEditingProduct(null)
+
+        // Refresh stats
+        fetchAdminStats()
       } else {
-        throw new Error("Failed to add product")
+        throw new Error(`Failed to ${editingProduct ? "update" : "add"} product`)
       }
     } catch (error) {
-      console.error("Error adding product:", error)
+      console.error(`Error ${editingProduct ? "updating" : "adding"} product:`, error)
       toast({
         title: "Error",
-        description: "Failed to add product",
+        description: `Failed to ${editingProduct ? "update" : "add"} product`,
         variant: "destructive",
       })
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+  const handleEdit = (product: Product) => {
+    setEditingProduct(product)
+    setFormData({
+      name: product.name || "",
+      sku: product.sku || "", // Changed from model_no to sku
+      description: product.description || "",
+      price: product.price?.toString() || "",
+      original_price: product.original_price?.toString() || "",
+      category: product.category || "",
+      stock_quantity: product.stock_quantity?.toString() || "", // Changed from stock to stock_quantity
+      image_url: product.image_url || "",
+    })
+  }
+
+  const handleCancelEdit = () => {
+    setEditingProduct(null)
+    setFormData({
+      name: "",
+      sku: "", // Changed from model_no to sku
+      description: "",
+      price: "",
+      original_price: "",
+      category: "",
+      stock_quantity: "", // Changed from stock to stock_quantity
+      image_url: "",
+    })
+  }
+
+  const handleDelete = async (productId: string) => {
+    setIsDeleting(productId)
+    try {
+      const response = await fetch(`/api/admin/products/${productId}`, {
+        method: "DELETE",
+      })
+
+      if (response.ok) {
+        setProducts(products.filter((p) => p.id !== productId))
+        toast({
+          title: "Success",
+          description: "Product deleted successfully",
+        })
+        fetchAdminStats()
+      } else {
+        throw new Error("Failed to delete product")
+      }
+    } catch (error) {
+      console.error("Error deleting product:", error)
+      toast({
+        title: "Error",
+        description: "Failed to delete product",
+        variant: "destructive",
+      })
+    } finally {
+      setIsDeleting(null)
+    }
+  }
+
+  const handleDeleteAll = async () => {
+    setIsDeletingAll(true)
+    try {
+      const deletePromises = products.map((product) => fetch(`/api/admin/products/${product.id}`, { method: "DELETE" }))
+
+      await Promise.all(deletePromises)
+
+      setProducts([])
+      toast({
+        title: "Success",
+        description: "All products deleted successfully",
+      })
+      fetchAdminStats()
+    } catch (error) {
+      console.error("Error deleting all products:", error)
+      toast({
+        title: "Error",
+        description: "Failed to delete all products",
+        variant: "destructive",
+      })
+    } finally {
+      setIsDeletingAll(false)
     }
   }
 
@@ -321,18 +475,18 @@ export default function AdminPage() {
                   </CardHeader>
                   <CardContent>
                     <div className="text-2xl font-bold">₹{stats.total_revenue.toLocaleString("en-IN")}</div>
-                    <p className="text-xs text-muted-foreground">+12% from last month</p>
+                    <p className="text-xs text-muted-foreground">Total revenue</p>
                   </CardContent>
                 </Card>
 
                 <Card>
                   <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                    <CardTitle className="text-sm font-medium">Trending Products</CardTitle>
+                    <CardTitle className="text-sm font-medium">Low Stock Alert</CardTitle>
                     <TrendingUp className="h-4 w-4 text-muted-foreground" />
                   </CardHeader>
                   <CardContent>
-                    <div className="text-2xl font-bold">{stats.trending_products}</div>
-                    <p className="text-xs text-muted-foreground">Based on recent views</p>
+                    <div className="text-2xl font-bold">{stats.low_stock_products}</div>
+                    <p className="text-xs text-muted-foreground">Items below 10 units</p>
                   </CardContent>
                 </Card>
               </div>
@@ -454,13 +608,19 @@ export default function AdminPage() {
 
         {activeTab === "products" && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            {/* Add Product Form */}
+            {/* Add/Edit Product Form */}
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
-                  <Plus className="h-5 w-5" />
-                  Add New Product
+                  {editingProduct ? <Edit className="h-5 w-5" /> : <Plus className="h-5 w-5" />}
+                  {editingProduct ? "Edit Product" : "Add New Product"}
                 </CardTitle>
+                {editingProduct && (
+                  <Button variant="outline" size="sm" onClick={handleCancelEdit} className="w-fit bg-transparent">
+                    <X className="h-4 w-4 mr-2" />
+                    Cancel Edit
+                  </Button>
+                )}
               </CardHeader>
               <CardContent>
                 <form onSubmit={handleSubmit} className="space-y-4">
@@ -475,11 +635,11 @@ export default function AdminPage() {
                   </div>
 
                   <div>
-                    <Label htmlFor="model_no">Model Number</Label>
+                    <Label htmlFor="sku">Model Number (SKU)</Label> {/* Updated label and id */}
                     <Input
-                      id="model_no"
-                      value={formData.model_no}
-                      onChange={(e) => handleInputChange("model_no", e.target.value)}
+                      id="sku" // Changed from model_no to sku
+                      value={formData.sku} // Changed from model_no to sku
+                      onChange={(e) => handleInputChange("sku", e.target.value)} // Changed from model_no to sku
                       placeholder="e.g., GT-WOM-SAR-001"
                       required
                     />
@@ -529,18 +689,17 @@ export default function AdminPage() {
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="women">Women</SelectItem>
-                          <SelectItem value="men">Men</SelectItem>
                           <SelectItem value="kids">Kids</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
                     <div>
-                      <Label htmlFor="stock">Stock Quantity</Label>
+                      <Label htmlFor="stock_quantity">Stock Quantity</Label> {/* Updated id */}
                       <Input
-                        id="stock"
+                        id="stock_quantity" // Changed from stock to stock_quantity
                         type="number"
-                        value={formData.stock}
-                        onChange={(e) => handleInputChange("stock", e.target.value)}
+                        value={formData.stock_quantity} // Changed from stock to stock_quantity
+                        onChange={(e) => handleInputChange("stock_quantity", e.target.value)} // Changed from stock to stock_quantity
                         required
                       />
                     </div>
@@ -561,10 +720,13 @@ export default function AdminPage() {
                     {isSubmitting ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Adding Product...
+                        {editingProduct ? "Updating Product..." : "Adding Product..."}
                       </>
                     ) : (
-                      "Add Product"
+                      <>
+                        {editingProduct ? <Save className="mr-2 h-4 w-4" /> : <Plus className="mr-2 h-4 w-4" />}
+                        {editingProduct ? "Update Product" : "Add Product"}
+                      </>
                     )}
                   </Button>
                 </form>
@@ -573,8 +735,46 @@ export default function AdminPage() {
 
             {/* Products List */}
             <Card>
-              <CardHeader>
+              <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle>Current Products ({products.length})</CardTitle>
+                {products.length > 0 && (
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="destructive" size="sm">
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Delete All
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle className="flex items-center gap-2">
+                          <AlertTriangle className="h-5 w-5 text-red-500" />
+                          Delete All Products
+                        </AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Are you sure you want to delete all {products.length} products? This action cannot be undone.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                          onClick={handleDeleteAll}
+                          className="bg-red-600 hover:bg-red-700"
+                          disabled={isDeletingAll}
+                        >
+                          {isDeletingAll ? (
+                            <>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Deleting...
+                            </>
+                          ) : (
+                            "Delete All"
+                          )}
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                )}
               </CardHeader>
               <CardContent>
                 {isLoading ? (
@@ -590,22 +790,55 @@ export default function AdminPage() {
                         <div className="flex justify-between items-start">
                           <div className="flex-1">
                             <h3 className="font-semibold">{product.name}</h3>
-                            <p className="text-xs text-gray-500 mb-1">Model: {product.model_no}</p>
+                            <p className="text-xs text-gray-500 mb-1">Model: {product.sku}</p>{" "}
+                            {/* Changed from model_no to sku */}
                             <p className="text-sm text-gray-600 mb-2">{product.description}</p>
                             <div className="flex items-center gap-4 text-sm">
                               <span className="font-medium">₹{product.price}</span>
                               <span className="text-gray-500 line-through">₹{product.original_price}</span>
                               <span className="text-blue-600 capitalize">{product.category}</span>
-                              <span className="text-green-600">Stock: {product.stock}</span>
+                              <span className={`${product.stock_quantity < 10 ? "text-red-600" : "text-green-600"}`}>
+                                Stock: {product.stock_quantity} {/* Changed from stock to stock_quantity */}
+                              </span>
                             </div>
                           </div>
                           <div className="flex gap-2">
-                            <Button variant="outline" size="sm">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleEdit(product)}
+                              disabled={editingProduct?.id === product.id}
+                            >
                               <Edit className="h-4 w-4" />
                             </Button>
-                            <Button variant="outline" size="sm">
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button variant="outline" size="sm" disabled={isDeleting === product.id}>
+                                  {isDeleting === product.id ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Delete Product</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    Are you sure you want to delete "{product.name}"? This action cannot be undone.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => handleDelete(product.id)}
+                                    className="bg-red-600 hover:bg-red-700"
+                                  >
+                                    Delete
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
                           </div>
                         </div>
                       </div>

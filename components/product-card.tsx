@@ -1,11 +1,13 @@
 "use client"
 
+import type React from "react"
+
 import Image from "next/image"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Star, ShoppingCart } from 'lucide-react'
+import { Star, ShoppingCart } from "lucide-react"
 import { useCart, type Product } from "@/hooks/use-cart"
 import { toast } from "@/hooks/use-toast"
 
@@ -16,22 +18,30 @@ interface ProductCardProps {
 export function ProductCard({ product }: ProductCardProps) {
   const { addItem } = useCart()
 
+  if (!product) {
+    return null
+  }
+
   const handleAddToCart = (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    
+
     console.log("ProductCard: Adding to cart:", product)
     addItem(product, 1)
-    
+
     toast({
       title: "Added to cart",
       description: `${product.name} has been added to your cart.`,
     })
   }
 
-  const discountPercentage = product.originalPrice
-    ? Math.round(((product.originalPrice - product.price) / product.originalPrice) * 100)
-    : 0
+  const discountPercentage =
+    product.original_price &&
+    typeof product.original_price === "number" &&
+    typeof product.price === "number" &&
+    product.original_price > product.price
+      ? Math.round(((product.original_price - product.price) / product.original_price) * 100)
+      : 0
 
   return (
     <Card className="group hover:shadow-lg transition-shadow duration-300 overflow-hidden">
@@ -39,15 +49,13 @@ export function ProductCard({ product }: ProductCardProps) {
         <div className="relative">
           <Image
             src={product.imageUrl || "/placeholder.svg?height=300&width=300"}
-            alt={product.name}
+            alt={product.name || "Product"}
             width={300}
             height={300}
             className="w-full h-48 object-cover group-hover:scale-105 transition-transform duration-300"
           />
           {discountPercentage > 0 && (
-            <Badge className="absolute top-2 left-2 bg-red-500 text-white">
-              {discountPercentage}% OFF
-            </Badge>
+            <Badge className="absolute top-2 left-2 bg-red-500 text-white">{discountPercentage}% OFF</Badge>
           )}
         </div>
       </Link>
@@ -55,7 +63,7 @@ export function ProductCard({ product }: ProductCardProps) {
       <CardContent className="p-4">
         <Link href={`/products/${product.id}`}>
           <h3 className="font-semibold text-lg mb-2 line-clamp-2 hover:text-orange-600 transition-colors">
-            {product.name}
+            {product.name || "Unnamed Product"}
           </h3>
         </Link>
 
@@ -73,20 +81,18 @@ export function ProductCard({ product }: ProductCardProps) {
 
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center space-x-2">
-            <span className="text-xl font-bold text-green-600">₹{product.price.toLocaleString("en-IN")}</span>
-            {product.originalPrice && product.originalPrice > product.price && (
-              <span className="text-sm text-gray-500 line-through">
-                ₹{product.originalPrice.toLocaleString("en-IN")}
-              </span>
-            )}
+            <span className="text-xl font-bold text-green-600">₹{(product.price || 0).toLocaleString("en-IN")}</span>
+            {product.original_price &&
+              typeof product.original_price === "number" &&
+              product.original_price > (product.price || 0) && (
+                <span className="text-sm text-gray-500 line-through">
+                  ₹{product.original_price.toLocaleString("en-IN")}
+                </span>
+              )}
           </div>
         </div>
 
-        <Button 
-          onClick={handleAddToCart}
-          className="w-full bg-orange-600 hover:bg-orange-700 text-white"
-          size="sm"
-        >
+        <Button onClick={handleAddToCart} className="w-full bg-orange-600 hover:bg-orange-700 text-white" size="sm">
           <ShoppingCart className="h-4 w-4 mr-2" />
           Add to Cart
         </Button>

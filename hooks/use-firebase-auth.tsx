@@ -11,6 +11,7 @@ import {
   updateProfile,
   signInWithPopup,
   GoogleAuthProvider,
+  FacebookAuthProvider,
 } from "firebase/auth"
 import { auth } from "../lib/firebase-client"
 
@@ -20,6 +21,7 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<void>
   signUp: (email: string, password: string, name?: string) => Promise<void>
   signInWithGoogle: () => Promise<void>
+  signInWithFacebook: () => Promise<void>
   signOut: () => Promise<void>
   isAdmin: boolean
 }
@@ -30,11 +32,12 @@ const AuthContext = createContext<AuthContextType>({
   signIn: async () => {},
   signUp: async () => {},
   signInWithGoogle: async () => {},
+  signInWithFacebook: async () => {},
   signOut: async () => {},
   isAdmin: false,
 })
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+export function AuthProvider({ children }: { children: React.ReactNode }): React.ReactElement {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -90,9 +93,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  const signInWithFacebook = async () => {
+    try {
+      const provider = new FacebookAuthProvider()
+      provider.addScope("email")
+      provider.addScope("public_profile")
+      await signInWithPopup(auth, provider)
+    } catch (error) {
+      console.error("Facebook sign in error:", error)
+      throw error
+    }
+  }
+
   const signOut = async () => {
     try {
+      console.log("[v0] Signing out user, clearing cart...")
+      localStorage.removeItem("golden-threads-cart")
+      // Dispatch cart update event to update UI immediately
+      window.dispatchEvent(new CustomEvent("cartUpdated", { detail: { items: [], count: 0 } }))
+
       await firebaseSignOut(auth)
+      console.log("[v0] User signed out successfully")
     } catch (error) {
       console.error("Sign out error:", error)
       throw error
@@ -105,6 +126,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signIn,
     signUp,
     signInWithGoogle,
+    signInWithFacebook,
     signOut,
     isAdmin,
   }
@@ -118,28 +140,4 @@ export function useAuth(): AuthContextType {
     throw new Error("useAuth must be used within an AuthProvider")
   }
   return context
-}
-
-export function useRequireAuth() {
-  const auth = useAuth()
-
-  useEffect(() => {
-    if (!auth.loading && !auth.user) {
-      window.location.href = "/auth"
-    }
-  }, [auth.loading, auth.user])
-
-  return auth
-}
-
-export function useRequireAdmin() {
-  const auth = useAuth()
-
-  useEffect(() => {
-    if (!auth.loading && (!auth.user || !auth.isAdmin)) {
-      window.location.href = "/"
-    }
-  }, [auth.loading, auth.user, auth.isAdmin])
-
-  return auth
 }

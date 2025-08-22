@@ -31,7 +31,8 @@ export default function HeritagePage() {
               </div>
               <div className="bg-gradient-to-br from-amber-100 to-yellow-100 rounded-2xl p-8">
                 <img
-                  src="/placeholder.svg?height=300&width=400"
+                  src="/the beginning.png"
+                  height="800" width="600"
                   alt="Heritage store 1989"
                   className="w-full rounded-lg shadow-lg"
                 />
@@ -41,7 +42,7 @@ export default function HeritagePage() {
             <div className="grid md:grid-cols-2 gap-12 items-center">
               <div className="order-2 md:order-1 bg-gradient-to-br from-amber-100 to-yellow-100 rounded-2xl p-8">
                 <img
-                  src="/placeholder.svg?height=300&width=400"
+                  src="/placeholder.svg"
                   alt="Growing community"
                   className="w-full rounded-lg shadow-lg"
                 />

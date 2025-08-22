@@ -1,4 +1,5 @@
 export interface Product {
+  original_price: any
   id: string
   name: string
   model_no?: string

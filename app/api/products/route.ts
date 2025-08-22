@@ -8,7 +8,7 @@ const mockProducts = [
     name: "Elegant Silk Saree",
     description: "Beautiful handwoven silk saree with traditional patterns",
     price: 8999,
-    originalPrice: 12999,
+    original_price: 12999,
     category: "women",
     stock: 15,
     imageUrl: "/placeholder.svg?height=400&width=300&text=Silk+Saree",
@@ -18,7 +18,7 @@ const mockProducts = [
     name: "Designer Kurti Set",
     description: "Premium cotton kurti with matching dupatta",
     price: 2499,
-    originalPrice: 3499,
+    original_price: 3499,
     category: "women",
     stock: 25,
     imageUrl: "/placeholder.svg?height=400&width=300&text=Kurti+Set",
@@ -28,7 +28,7 @@ const mockProducts = [
     name: "Kids Party Dress",
     description: "Adorable party dress for special occasions",
     price: 1899,
-    originalPrice: 2499,
+    original_price: 2499,
     category: "kids",
     stock: 20,
     imageUrl: "/placeholder.svg?height=400&width=300&text=Kids+Dress",
@@ -38,7 +38,7 @@ const mockProducts = [
     name: "Traditional Lehenga",
     description: "Stunning lehenga for weddings and festivals",
     price: 15999,
-    originalPrice: 19999,
+    original_price: 19999,
     category: "women",
     stock: 8,
     imageUrl: "/placeholder.svg?height=400&width=300&text=Lehenga",
@@ -48,7 +48,7 @@ const mockProducts = [
     name: "Kids Ethnic Wear",
     description: "Comfortable ethnic wear for kids",
     price: 1299,
-    originalPrice: 1699,
+    original_price: 1699,
     category: "kids",
     stock: 30,
     imageUrl: "/placeholder.svg?height=400&width=300&text=Kids+Ethnic",
@@ -58,7 +58,7 @@ const mockProducts = [
     name: "Cotton Salwar Suit",
     description: "Comfortable cotton salwar suit for daily wear",
     price: 1999,
-    originalPrice: 2799,
+    original_price: 2799,
     category: "women",
     stock: 18,
     imageUrl: "/placeholder.svg?height=400&width=300&text=Salwar+Suit",
@@ -73,87 +73,48 @@ export async function GET(request: Request) {
     if (process.env.DATABASE_URL) {
       const sql = neon(process.env.DATABASE_URL)
 
-      // First, check what columns exist in the products table
-      const columnCheck = await sql`
-        SELECT column_name 
-        FROM information_schema.columns 
-        WHERE table_name = 'products'
-      `
-
-      const availableColumns = columnCheck.map((row) => row.column_name)
-      console.log("Available columns:", availableColumns)
-
-      // Build the query based on available columns
-      let query
+      let products
       if (category) {
-        if (availableColumns.includes("stock_quantity")) {
-          // Use stock_quantity and calculate originalPrice from price
-          query = sql`
-            SELECT 
-              id,
-              name,
-              description,
-              price,
-              (price * 1.3)::integer as "originalPrice",
-              category,
-              stock_quantity as stock,
-              image_url as "imageUrl"
-            FROM products 
-            WHERE category = ${category}
-            ORDER BY created_at DESC
-          `
-        } else {
-          // Use stock column
-          query = sql`
-            SELECT 
-              id,
-              name,
-              description,
-              price,
-              (price * 1.3)::integer as "originalPrice",
-              category,
-              stock,
-              image_url as "imageUrl"
-            FROM products 
-            WHERE category = ${category}
-            ORDER BY created_at DESC
-          `
-        }
+        products = await sql`
+          SELECT 
+            id,
+            name,
+            description,
+            price,
+            original_price,
+            category,
+            COALESCE(stock_quantity, 0) as stock,
+            image_url as "imageUrl",
+            is_featured,
+            is_active,
+            sku,
+            material,
+            care_instructions
+          FROM products 
+          WHERE category = ${category} AND is_active = true
+          ORDER BY created_at DESC
+        `
       } else {
-        if (availableColumns.includes("stock_quantity")) {
-          // Use stock_quantity and calculate originalPrice from price
-          query = sql`
-            SELECT 
-              id,
-              name,
-              description,
-              price,
-              (price * 1.3)::integer as "originalPrice",
-              category,
-              stock_quantity as stock,
-              image_url as "imageUrl"
-            FROM products 
-            ORDER BY created_at DESC
-          `
-        } else {
-          // Use stock column
-          query = sql`
-            SELECT 
-              id,
-              name,
-              description,
-              price,
-              (price * 1.3)::integer as "originalPrice",
-              category,
-              stock,
-              image_url as "imageUrl"
-            FROM products 
-            ORDER BY created_at DESC
-          `
-        }
+        products = await sql`
+          SELECT 
+            id,
+            name,
+            description,
+            price,
+            original_price,
+            category,
+            COALESCE(stock_quantity, 0) as stock,
+            image_url as "imageUrl",
+            is_featured,
+            is_active,
+            sku,
+            material,
+            care_instructions
+          FROM products 
+          WHERE is_active = true
+          ORDER BY created_at DESC
+        `
       }
-
-      const products = await query
 
       return NextResponse.json(products)
     } else {
