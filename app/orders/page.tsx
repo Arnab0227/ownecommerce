@@ -8,6 +8,7 @@ import { useAuth } from "@/hooks/use-firebase-auth"
 import { useToast } from "@/hooks/use-toast"
 import { Package, Truck, CheckCircle, Clock, MapPin, Star, Loader2 } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { InvoiceGenerator } from "@/components/invoice-generator"
 
 interface OrderItem {
   id: string
@@ -34,6 +35,7 @@ interface Order {
   }
   estimatedDelivery?: string
   trackingNumber?: string
+  adminNotes?: string
 }
 
 export default function OrdersPage() {
@@ -50,100 +52,90 @@ export default function OrdersPage() {
     }
   }, [user, loading])
 
+  type DbOrderRow = {
+    id: number | string
+    order_number?: string
+    created_at: string
+    order_status: "pending" | "processing" | "shipped" | "delivered" | "cancelled" | "confirmed"
+    total_amount: string | number
+    delivery_fee?: string | number | null
+    shipping_address?: {
+      name?: string
+      address?: string
+      city?: string
+      state?: string
+      pincode?: string
+    } | null
+    tracking_number?: string | null
+  }
+
+  type DbOrderDetails = {
+    order: {
+      id: number | string
+      tracking_number?: string | null
+      admin_notes?: string | null
+      items: Array<{
+        product_id: string | number
+        product_name: string | null
+        product_image?: string | null
+        quantity: number
+        price: number
+        total: number
+      }>
+    }
+  }
+
   const loadOrders = async () => {
     try {
-      // Mock orders data - in real app, fetch from API
-      const mockOrders: Order[] = [
-        {
-          id: "1",
-          orderNumber: "GT-2024-001",
-          date: "2024-01-15",
-          status: "delivered",
-          items: [
-            {
-              id: "1",
-              name: "Elegant Silk Dress",
-              price: 2999,
-              quantity: 1,
-              image: "/placeholder.svg?height=80&width=80",
-            },
-            {
-              id: "2",
-              name: "Cotton Kids T-Shirt",
-              price: 599,
-              quantity: 2,
-              image: "/placeholder.svg?height=80&width=80",
-            },
-          ],
-          totalAmount: 4197,
-          loyaltyPointsEarned: Math.round(4197 * 0.015), // 1.5% of order value
-          shippingAddress: {
-            name: "John Doe",
-            street: "123 Main Street, Apartment 4B",
-            city: "Mumbai",
-            state: "Maharashtra",
-            pincode: "400001",
-          },
-          trackingNumber: "GT123456789",
-        },
-        {
-          id: "2",
-          orderNumber: "GT-2024-002",
-          date: "2024-01-20",
-          status: "shipped",
-          items: [
-            {
-              id: "3",
-              name: "Designer Handbag",
-              price: 1999,
-              quantity: 1,
-              image: "/placeholder.svg?height=80&width=80",
-            },
-          ],
-          totalAmount: 2199,
-          loyaltyPointsEarned: Math.round(2199 * 0.015),
-          shippingAddress: {
-            name: "John Doe",
-            street: "123 Main Street, Apartment 4B",
-            city: "Mumbai",
-            state: "Maharashtra",
-            pincode: "400001",
-          },
-          estimatedDelivery: "2024-01-25",
-          trackingNumber: "GT987654321",
-        },
-        {
-          id: "3",
-          orderNumber: "GT-2024-003",
-          date: "2024-01-22",
-          status: "processing",
-          items: [
-            {
-              id: "4",
-              name: "Kids Summer Dress",
-              price: 899,
-              quantity: 1,
-              image: "/placeholder.svg?height=80&width=80",
-            },
-          ],
-          totalAmount: 1099,
-          loyaltyPointsEarned: Math.round(1099 * 0.015),
-          shippingAddress: {
-            name: "John Doe",
-            street: "456 Business Park, Floor 5",
-            city: "Mumbai",
-            state: "Maharashtra",
-            pincode: "400002",
-          },
-          estimatedDelivery: "2024-01-28",
-        },
-      ]
+      const response = await fetch(`/api/orders?userId=${user?.uid}`)
+      if (!response.ok) throw new Error("failed")
 
-      // Simulate API delay
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-      setOrders(mockOrders)
-    } catch (error) {
-      console.error("Error loading orders:", error)
+      const rows: DbOrderRow[] = await response.json()
+
+      const mapped = await Promise.all(
+        rows.map(async (row) => {
+          const detailsRes = await fetch(`/api/orders/${row.id}`)
+          let details: DbOrderDetails | null = null
+          if (detailsRes.ok) {
+            details = await detailsRes.json()
+          }
+
+          const items =
+            details?.order.items?.map((it, idx) => ({
+              id: `${row.id}-${it.product_id}-${idx}`,
+              name: it.product_name || `Product ${it.product_id}`,
+              price: Number(it.price || 0),
+              quantity: Number(it.quantity || 0),
+              image: it.product_image || "/placeholder.svg?height=80&width=80",
+            })) || []
+
+          const shipping = row.shipping_address || {}
+
+          const uiOrder: Order & { adminNotes?: string } = {
+            id: String(row.id),
+            orderNumber: row.order_number || String(row.id),
+            date: row.created_at,
+            status: (row.order_status === "confirmed" ? "processing" : row.order_status) as Order["status"],
+            items,
+            totalAmount: Number(row.total_amount ?? 0),
+            loyaltyPointsEarned: Math.round(Number(row.total_amount ?? 0) * 0.015),
+            shippingAddress: {
+              name: shipping?.name || "N/A",
+              street: shipping?.address || "N/A",
+              city: shipping?.city || "N/A",
+              state: shipping?.state || "N/A",
+              pincode: shipping?.pincode || "N/A",
+            },
+            trackingNumber: details?.order?.tracking_number || row.tracking_number || undefined,
+          }
+          ;(uiOrder as any).adminNotes = details?.order?.admin_notes || null
+          return uiOrder
+        }),
+      )
+
+      setOrders(mapped)
+    } catch (e) {
+      console.error("Error loading orders:", e)
       toast({
         title: "Error",
         description: "Failed to load orders",
@@ -269,7 +261,6 @@ export default function OrdersPage() {
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-4">
-                        {/* Order Items */}
                         <div className="space-y-3">
                           {order.items.map((item) => (
                             <div key={item.id} className="flex items-center gap-4">
@@ -288,7 +279,6 @@ export default function OrdersPage() {
                           ))}
                         </div>
 
-                        {/* Shipping Address */}
                         <div className="border-t pt-4">
                           <h4 className="font-medium flex items-center gap-2 mb-2">
                             <MapPin className="h-4 w-4" />
@@ -304,7 +294,6 @@ export default function OrdersPage() {
                           </p>
                         </div>
 
-                        {/* Tracking Info */}
                         {order.trackingNumber && (
                           <div className="border-t pt-4">
                             <h4 className="font-medium flex items-center gap-2 mb-2">
@@ -322,6 +311,14 @@ export default function OrdersPage() {
                           </div>
                         )}
 
+                        {/* Seller Notes */}
+                        {(order as any).adminNotes ? (
+                          <div className="border-t pt-4">
+                            <h4 className="font-medium mb-2">Seller Notes</h4>
+                            <p className="text-sm text-gray-700 whitespace-pre-wrap">{(order as any).adminNotes}</p>
+                          </div>
+                        ) : null}
+
                         <div className="flex gap-2 pt-4">
                           <Button variant="outline" size="sm">
                             Track Order
@@ -329,6 +326,11 @@ export default function OrdersPage() {
                           <Button variant="outline" size="sm">
                             Contact Support
                           </Button>
+                          {order.status === "pending" && (
+                            <Button variant="outline" size="sm">
+                              Retry Payment
+                            </Button>
+                          )}
                         </div>
                       </div>
                     </CardContent>
@@ -380,7 +382,6 @@ export default function OrdersPage() {
                     </CardHeader>
                     <CardContent>
                       <div className="space-y-4">
-                        {/* Order Items */}
                         <div className="space-y-3">
                           {order.items.map((item) => (
                             <div key={item.id} className="flex items-center gap-4">
@@ -399,6 +400,14 @@ export default function OrdersPage() {
                           ))}
                         </div>
 
+                        {/* Seller Notes */}
+                        {(order as any).adminNotes ? (
+                          <div className="border-t pt-4">
+                            <h4 className="font-medium mb-2">Seller Notes</h4>
+                            <p className="text-sm text-gray-700 whitespace-pre-wrap">{(order as any).adminNotes}</p>
+                          </div>
+                        ) : null}
+
                         <div className="flex gap-2 pt-4">
                           <Button variant="outline" size="sm">
                             Reorder
@@ -406,9 +415,7 @@ export default function OrdersPage() {
                           <Button variant="outline" size="sm">
                             Write Review
                           </Button>
-                          <Button variant="outline" size="sm">
-                            Download Invoice
-                          </Button>
+                          <InvoiceGenerator orderId={order.id} orderStatus={order.status} />
                         </div>
                       </div>
                     </CardContent>

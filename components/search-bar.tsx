@@ -6,7 +6,7 @@ import { useState, useEffect, useRef } from "react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Search, X, Loader2 } from "lucide-react"
+import { Search, X, Loader2, TrendingUp, History } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useDebounce } from "@/hooks/use-debounce"
 
@@ -23,6 +23,7 @@ interface SearchResponse {
   exactMatches: SearchResult[]
   suggestedMatches: SearchResult[]
   suggestions: string[]
+  trendingSearches: string[]
 }
 
 export function SearchBar() {
@@ -31,6 +32,7 @@ export function SearchBar() {
   const [results, setResults] = useState<SearchResponse | null>(null)
   const [loading, setLoading] = useState(false)
   const [selectedIndex, setSelectedIndex] = useState(-1)
+  const [userSearchHistory, setUserSearchHistory] = useState<string[]>([])
 
   const router = useRouter()
   const searchRef = useRef<HTMLDivElement>(null)
@@ -38,40 +40,38 @@ export function SearchBar() {
 
   const debouncedQuery = useDebounce(query, 300)
 
-  const trendingSearches = [
-    "Silk Saree",
-    "Cotton Kurti",
-    "Kids Frock",
-    "Designer Lehenga",
-    "Nighty",
-    "Kurta Pajama",
-    "Maxi Dress",
-    "Co-ord Set",
-  ]
+  useEffect(() => {
+    const savedHistory = localStorage.getItem("searchHistory")
+    if (savedHistory) {
+      setUserSearchHistory(JSON.parse(savedHistory).slice(0, 5))
+    }
+  }, [])
 
   useEffect(() => {
     if (debouncedQuery.trim()) {
       performSearch(debouncedQuery)
     } else {
-      setResults(null)
+      loadTrendingSearches()
     }
   }, [debouncedQuery])
 
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
-        setIsOpen(false)
+  const loadTrendingSearches = async () => {
+    try {
+      const response = await fetch("/api/search")
+      if (response.ok) {
+        const data = await response.json()
+        setResults(data)
       }
+    } catch (error) {
+      console.error("Failed to load trending searches:", error)
     }
-
-    document.addEventListener("mousedown", handleClickOutside)
-    return () => document.removeEventListener("mousedown", handleClickOutside)
-  }, [])
+  }
 
   const performSearch = async (searchQuery: string) => {
     setLoading(true)
     try {
-      const response = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}`)
+      const userId = localStorage.getItem("userId") || "anonymous"
+      const response = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}&user_id=${userId}`)
       if (response.ok) {
         const data = await response.json()
         setResults(data)
@@ -125,6 +125,7 @@ export function SearchBar() {
   }
 
   const handleProductClick = (productId: string) => {
+    saveSearchToHistory(query)
     router.push(`/products/${productId}`)
     setIsOpen(false)
     setQuery("")
@@ -134,6 +135,15 @@ export function SearchBar() {
     setQuery(suggestion)
     performSearch(suggestion)
     inputRef.current?.focus()
+  }
+
+  const saveSearchToHistory = (searchQuery: string) => {
+    if (!searchQuery.trim()) return
+
+    const currentHistory = JSON.parse(localStorage.getItem("searchHistory") || "[]")
+    const updatedHistory = [searchQuery, ...currentHistory.filter((h: string) => h !== searchQuery)].slice(0, 10)
+    localStorage.setItem("searchHistory", JSON.stringify(updatedHistory))
+    setUserSearchHistory(updatedHistory.slice(0, 5))
   }
 
   const clearSearch = () => {
@@ -154,7 +164,7 @@ export function SearchBar() {
           value={query}
           onChange={handleInputChange}
           onKeyDown={handleKeyDown}
-          onFocus={() => query.trim() && setIsOpen(true)}
+          onFocus={() => setIsOpen(true)}
           className="pl-10 pr-10"
         />
         {query && (
@@ -280,19 +290,52 @@ export function SearchBar() {
               </div>
             ) : (
               <div className="py-2">
-                <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                  Trending Searches
-                </div>
-                {trendingSearches.map((trend) => (
-                  <div
-                    key={trend}
-                    className="px-4 py-2 cursor-pointer hover:bg-gray-50 flex items-center"
-                    onClick={() => handleSuggestionClick(trend)}
-                  >
-                    <Search className="h-4 w-4 text-gray-400 mr-3" />
-                    <span className="text-sm text-gray-700">{trend}</span>
+                {userSearchHistory.length > 0 && (
+                  <div>
+                    <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center">
+                      <History className="h-3 w-3 mr-1" />
+                      Recent Searches
+                    </div>
+                    {userSearchHistory.map((search) => (
+                      <div
+                        key={search}
+                        className="px-4 py-2 cursor-pointer hover:bg-gray-50 flex items-center"
+                        onClick={() => handleSuggestionClick(search)}
+                      >
+                        <History className="h-4 w-4 text-gray-400 mr-3" />
+                        <span className="text-sm text-gray-700">{search}</span>
+                      </div>
+                    ))}
                   </div>
-                ))}
+                )}
+
+                <div>
+                  <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center">
+                    <TrendingUp className="h-3 w-3 mr-1" />
+                    Trending Searches
+                  </div>
+                  {(
+                    results?.trendingSearches || [
+                      "Silk Saree",
+                      "Cotton Kurti",
+                      "Kids Frock",
+                      "Designer Lehenga",
+                      "Nighty",
+                      "Kurta Pajama",
+                      "Maxi Dress",
+                      "Co-ord Set",
+                    ]
+                  ).map((trend) => (
+                    <div
+                      key={trend}
+                      className="px-4 py-2 cursor-pointer hover:bg-gray-50 flex items-center"
+                      onClick={() => handleSuggestionClick(trend)}
+                    >
+                      <TrendingUp className="h-4 w-4 text-gray-400 mr-3" />
+                      <span className="text-sm text-gray-700">{trend}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             )}
           </CardContent>

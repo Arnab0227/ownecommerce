@@ -55,30 +55,31 @@ export interface GrowthMetrics {
 }
 
 // Track a product view
-export async function trackProductView(
-  productId: number,
-  sessionId: string,
-  options: {
-    userId?: string
-    ipAddress?: string
-    userAgent?: string
-    referrer?: string
-    authToken?: string
-  } = {},
-): Promise<void> {
+export async function trackProductView(data: {
+  product_id: number
+  authorization?: string
+  ip_address?: string
+  user_agent?: string
+  referrer?: string
+  view_duration?: number
+}): Promise<boolean> {
   try {
-    let userId = options.userId
+    let userId: string | null = null
 
-    // If auth token is provided, verify it and get user ID
-    if (options.authToken && !userId) {
+    // If authorization header is provided, verify it and get user ID
+    if (data.authorization) {
       try {
-        const decodedToken = await verifyIdToken(options.authToken)
+        const token = data.authorization.replace("Bearer ", "")
+        const decodedToken = await verifyIdToken(token)
         userId = decodedToken.uid
       } catch (error) {
         console.warn("Failed to verify auth token:", error)
         // Continue without user ID
       }
     }
+
+    // Generate session ID if not provided
+    const sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`
 
     await sql`
       INSERT INTO product_views (
@@ -90,32 +91,44 @@ export async function trackProductView(
         referrer,
         viewed_at
       ) VALUES (
-        ${productId},
-        ${userId || null},
+        ${data.product_id},
+        ${userId},
         ${sessionId},
-        ${options.ipAddress || null},
-        ${options.userAgent || null},
-        ${options.referrer || null},
+        ${data.ip_address || null},
+        ${data.user_agent || null},
+        ${data.referrer || null},
         NOW()
       )
     `
+
+    return true
   } catch (error) {
     console.error("Error tracking product view:", error)
-    throw error
+    return false
   }
 }
 
 // Get trending products
 export async function getTrendingProducts(
+  period: "daily" | "weekly" | "monthly" = "weekly",
   limit = 10,
-  timeframe: "daily" | "weekly" | "monthly" = "weekly",
 ): Promise<TrendingProduct[]> {
   try {
-    const timeCondition = {
-      daily: "pv.viewed_at >= NOW() - INTERVAL '1 day'",
-      weekly: "pv.viewed_at >= NOW() - INTERVAL '7 days'",
-      monthly: "pv.viewed_at >= NOW() - INTERVAL '30 days'",
-    }[timeframe]
+    let timeCondition: string
+
+    switch (period) {
+      case "daily":
+        timeCondition = "pv.viewed_at >= NOW() - INTERVAL '1 day'"
+        break
+      case "weekly":
+        timeCondition = "pv.viewed_at >= NOW() - INTERVAL '7 days'"
+        break
+      case "monthly":
+        timeCondition = "pv.viewed_at >= NOW() - INTERVAL '30 days'"
+        break
+      default:
+        timeCondition = "pv.viewed_at >= NOW() - INTERVAL '7 days'"
+    }
 
     const results = await sql`
       SELECT 
@@ -128,9 +141,9 @@ export async function getTrendingProducts(
         p.price,
         p.image_url
       FROM products p
-      LEFT JOIN product_views pv ON p.id = pv.product_id
-      WHERE ${timeCondition}
+      LEFT JOIN product_views pv ON p.id = pv.product_id AND ${timeCondition}
       GROUP BY p.id, p.name, p.category, p.price, p.image_url
+      HAVING COUNT(pv.id) > 0
       ORDER BY trend_score DESC
       LIMIT ${limit}
     `
@@ -147,7 +160,7 @@ export async function getTrendingProducts(
     }))
   } catch (error) {
     console.error("Error getting trending products:", error)
-    throw error
+    return []
   }
 }
 
@@ -156,20 +169,32 @@ export async function getAnalyticsDashboard(
   period: "daily" | "weekly" | "monthly" = "weekly",
 ): Promise<AnalyticsDashboard> {
   try {
-    const timeCondition = {
-      daily: "pv.viewed_at >= NOW() - INTERVAL '1 day'",
-      weekly: "pv.viewed_at >= NOW() - INTERVAL '7 days'",
-      monthly: "pv.viewed_at >= NOW() - INTERVAL '30 days'",
-    }[period]
+    let timeCondition: string
+    let previousTimeCondition: string
 
-    const previousTimeCondition = {
-      daily: "pv.viewed_at >= NOW() - INTERVAL '2 days' AND pv.viewed_at < NOW() - INTERVAL '1 day'",
-      weekly: "pv.viewed_at >= NOW() - INTERVAL '14 days' AND pv.viewed_at < NOW() - INTERVAL '7 days'",
-      monthly: "pv.viewed_at >= NOW() - INTERVAL '60 days' AND pv.viewed_at < NOW() - INTERVAL '30 days'",
-    }[period]
+    switch (period) {
+      case "daily":
+        timeCondition = "pv.viewed_at >= NOW() - INTERVAL '1 day'"
+        previousTimeCondition = "pv.viewed_at >= NOW() - INTERVAL '2 days' AND pv.viewed_at < NOW() - INTERVAL '1 day'"
+        break
+      case "weekly":
+        timeCondition = "pv.viewed_at >= NOW() - INTERVAL '7 days'"
+        previousTimeCondition =
+          "pv.viewed_at >= NOW() - INTERVAL '14 days' AND pv.viewed_at < NOW() - INTERVAL '7 days'"
+        break
+      case "monthly":
+        timeCondition = "pv.viewed_at >= NOW() - INTERVAL '30 days'"
+        previousTimeCondition =
+          "pv.viewed_at >= NOW() - INTERVAL '60 days' AND pv.viewed_at < NOW() - INTERVAL '30 days'"
+        break
+      default:
+        timeCondition = "pv.viewed_at >= NOW() - INTERVAL '7 days'"
+        previousTimeCondition =
+          "pv.viewed_at >= NOW() - INTERVAL '14 days' AND pv.viewed_at < NOW() - INTERVAL '7 days'"
+    }
 
     // Get total views and unique viewers
-    const [totalStats] = await sql`
+    const totalStatsResult = await sql`
       SELECT 
         COUNT(pv.id) as total_views,
         COUNT(DISTINCT COALESCE(pv.user_id, pv.session_id)) as unique_viewers
@@ -177,8 +202,10 @@ export async function getAnalyticsDashboard(
       WHERE ${timeCondition}
     `
 
+    const totalStats = totalStatsResult[0] || { total_views: 0, unique_viewers: 0 }
+
     // Get previous period stats for growth calculation
-    const [previousStats] = await sql`
+    const previousStatsResult = await sql`
       SELECT 
         COUNT(pv.id) as total_views,
         COUNT(DISTINCT COALESCE(pv.user_id, pv.session_id)) as unique_viewers
@@ -186,8 +213,10 @@ export async function getAnalyticsDashboard(
       WHERE ${previousTimeCondition}
     `
 
+    const previousStats = previousStatsResult[0] || { total_views: 0, unique_viewers: 0 }
+
     // Get top products
-    const topProducts = await getTrendingProducts(5, period)
+    const topProducts = await getTrendingProducts(period, 5)
 
     // Get category performance
     const categoryPerformance = await sql`
@@ -197,9 +226,9 @@ export async function getAnalyticsDashboard(
         COUNT(DISTINCT COALESCE(pv.user_id, pv.session_id)) as unique_viewers,
         0 as conversion_rate
       FROM products p
-      LEFT JOIN product_views pv ON p.id = pv.product_id
-      WHERE ${timeCondition}
+      LEFT JOIN product_views pv ON p.id = pv.product_id AND ${timeCondition}
       GROUP BY p.category
+      HAVING COUNT(pv.id) > 0
       ORDER BY view_count DESC
     `
 
@@ -217,13 +246,13 @@ export async function getAnalyticsDashboard(
 
     // Calculate growth metrics
     const viewsGrowth =
-      previousStats.total_views > 0
+      Number(previousStats.total_views) > 0
         ? ((Number(totalStats.total_views) - Number(previousStats.total_views)) / Number(previousStats.total_views)) *
           100
         : 0
 
     const uniqueViewersGrowth =
-      previousStats.unique_viewers > 0
+      Number(previousStats.unique_viewers) > 0
         ? ((Number(totalStats.unique_viewers) - Number(previousStats.unique_viewers)) /
             Number(previousStats.unique_viewers)) *
           100
@@ -253,7 +282,20 @@ export async function getAnalyticsDashboard(
     }
   } catch (error) {
     console.error("Error getting analytics dashboard:", error)
-    throw error
+    // Return empty data structure instead of throwing
+    return {
+      totalViews: 0,
+      uniqueViewers: 0,
+      topProducts: [],
+      categoryPerformance: [],
+      viewsOverTime: [],
+      growthMetrics: {
+        viewsGrowth: 0,
+        uniqueViewersGrowth: 0,
+        topGrowingProduct: "N/A",
+        topGrowingCategory: "N/A",
+      },
+    }
   }
 }
 

@@ -7,10 +7,11 @@ export interface Product {
   name: string
   description: string
   price: number
-  original_price: number
+  original_price?: number // Made optional to match database schema
   imageUrl?: string
+  image_url?: string // Added alternative property name for compatibility
   category: string
-  stock: number
+  stock?: number // Made optional to handle undefined values
   rating?: number
   model_no?: string
 }

@@ -2,17 +2,43 @@ import type React from "react"
 import type { Metadata } from "next"
 import { Inter } from "next/font/google"
 import "./globals.css"
-import { ThemeProvider } from "@/components/theme-provider"
+import dynamic from "next/dynamic"
 import { Toaster } from "@/components/ui/toaster"
-import { AuthProvider } from "@/hooks/use-firebase-auth"
-import { Navbar } from "@/components/navbar"
-import { Footer } from "@/components/footer"
 
-const inter = Inter({ subsets: ["latin"] })
+const ThemeProvider = dynamic(
+  () => import("@/components/theme-provider").then((mod) => ({ default: mod.ThemeProvider })),
+  {
+    ssr: false,
+  },
+)
+
+const AuthProvider = dynamic(() => import("@/hooks/use-firebase-auth").then((mod) => ({ default: mod.AuthProvider })), {
+  ssr: false,
+  loading: () => <div className="min-h-screen bg-white" />,
+})
+
+const Navbar = dynamic(() => import("@/components/navbar").then((mod) => ({ default: mod.Navbar })), {
+  ssr: false,
+  loading: () => <div className="h-16 bg-white border-b" />,
+})
+
+const Footer = dynamic(() => import("@/components/footer").then((mod) => ({ default: mod.Footer })), {
+  ssr: false,
+})
+
+const inter = Inter({
+  subsets: ["latin"],
+  display: "swap",
+  preload: true,
+})
 
 export const metadata: Metadata = {
   title: "Suktara - Premium Fashion Collection",
   description: "Discover our exquisite collection of traditional and modern clothing for men, women, and children.",
+  other: {
+    "theme-color": "#f59e0b",
+    "color-scheme": "light",
+  },
 }
 
 export default function RootLayout({

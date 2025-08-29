@@ -13,34 +13,34 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet"
+import dynamic from "next/dynamic"
 import { Search, ShoppingCart, User, Menu, Heart, Package, Settings, LogOut, Crown, Gift } from "lucide-react"
 import { useAuth } from "@/hooks/use-firebase-auth"
 import { useCart } from "@/hooks/use-cart"
-import { SearchOverlay } from "./search-overlay"
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden"
+
+const SearchOverlay = dynamic(() => import("./search-overlay").then((mod) => ({ default: mod.SearchOverlay })), {
+  ssr: false,
+  loading: () => null,
+})
 
 export function Navbar() {
   const router = useRouter()
   const { user, isAdmin, signOut } = useAuth()
-  const cart = useCart() // Get the entire cart object instead of destructuring
+  const cart = useCart()
   const [isSearchOpen, setIsSearchOpen] = useState(false)
   const [totalItems, setTotalItems] = useState(0)
 
   useEffect(() => {
     const updateCartCount = () => {
       const count = cart.items.reduce((total, item) => total + item.quantity, 0)
-      console.log("[v0] Updating cart count:", count)
       setTotalItems(count)
     }
 
-    // Initial update
     updateCartCount()
 
-    // Listen for cart updates
     const handleCartUpdate = (event: any) => {
-      console.log("[v0] Cart updated event received", event.detail)
       if (event.detail && typeof event.detail.count === "number") {
-        console.log("[v0] Setting count from event:", event.detail.count)
         setTotalItems(event.detail.count)
       } else {
         updateCartCount()
@@ -48,10 +48,8 @@ export function Navbar() {
     }
 
     window.addEventListener("cartUpdated", handleCartUpdate)
-    // Also listen for storage changes in case cart is updated in another tab
     window.addEventListener("storage", (e) => {
       if (e.key === "golden-threads-cart") {
-        console.log("[v0] Cart storage changed")
         updateCartCount()
       }
     })
@@ -60,7 +58,7 @@ export function Navbar() {
       window.removeEventListener("cartUpdated", handleCartUpdate)
       window.removeEventListener("storage", handleCartUpdate)
     }
-  }, [cart.items]) // Depend on cart.items array instead of getItemCount function
+  }, [cart.items])
 
   const handleSignOut = async () => {
     try {
@@ -279,8 +277,7 @@ export function Navbar() {
         </div>
       </nav>
 
-      {/* Search Overlay */}
-      <SearchOverlay isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} />
+      {isSearchOpen && <SearchOverlay isOpen={isSearchOpen} onClose={() => setIsSearchOpen(false)} />}
     </>
   )
 }

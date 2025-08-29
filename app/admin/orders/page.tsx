@@ -42,6 +42,7 @@ interface Order {
   id: string
   user_id: string
   user_email: string
+  email?: string // allow fallback from API/coalesce
   total_amount: number
   status: "pending" | "confirmed" | "processing" | "shipped" | "delivered" | "cancelled"
   payment_method: "razorpay" | "cod"
@@ -49,6 +50,9 @@ interface Order {
   razorpay_order_id?: string
   razorpay_payment_id?: string
   razorpay_signature?: string
+  delivery_fee?: number
+  user_notes?: string | null
+  admin_notes?: string | null
   shipping_address: {
     name: string
     phone: string
@@ -62,6 +66,13 @@ interface Order {
   items?: OrderItem[]
 }
 
+interface UserProfile {
+  user_id: string
+  name?: string
+  email?: string
+  phone?: string
+}
+
 export default function AdminOrdersPage() {
   const { user, isAdmin, loading } = useAuth()
   const { toast } = useToast()
@@ -71,6 +82,19 @@ export default function AdminOrdersPage() {
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState<string>("all")
   const [timeFilter, setTimeFilter] = useState<string>("all")
+  const [userProfiles, setUserProfiles] = useState<Map<string, UserProfile>>(new Map())
+
+  const formatINR = (value: unknown) => {
+    const n = Number(value ?? 0)
+    return new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: "INR",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(n)
+  }
+
+  const isLikelyValidUserId = (id?: string) => Boolean(id && id !== "1" && id.length > 10)
 
   useEffect(() => {
     if (!loading && user && isAdmin) {
@@ -110,6 +134,21 @@ export default function AdminOrdersPage() {
         )
 
         setOrders(ordersWithItems)
+
+        const uniqueUserIds = [...new Set(ordersWithItems.map((order) => order.user_id))].filter((id) =>
+          isLikelyValidUserId(id),
+        )
+        const profilePromises = uniqueUserIds.map(async (userId) => {
+          const profile = await fetchUserProfile(userId)
+          return { userId, profile }
+        })
+
+        const profileResults = await Promise.all(profilePromises)
+        const newUserProfiles = new Map<string, UserProfile>()
+        profileResults.forEach(({ userId, profile }) => {
+          if (profile) newUserProfiles.set(userId, profile)
+        })
+        setUserProfiles(newUserProfiles)
       } else {
         throw new Error("Failed to fetch orders")
       }
@@ -128,14 +167,17 @@ export default function AdminOrdersPage() {
   const filterOrders = () => {
     let filtered = [...orders]
 
+    const normalizeEmail = (o: any) => (o?.user_email || o?.email || "").toString().toLowerCase()
+
     // Search filter
     if (searchTerm) {
+      const q = searchTerm.toLowerCase()
       filtered = filtered.filter(
-        (order) =>
-          order.id.toString().toLowerCase().includes(searchTerm.toLowerCase()) ||
-          order.user_email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          order.razorpay_order_id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          order.razorpay_payment_id?.toLowerCase().includes(searchTerm.toLowerCase()),
+        (order: any) =>
+          order.id?.toString()?.toLowerCase().includes(q) ||
+          normalizeEmail(order).includes(q) ||
+          order.razorpay_order_id?.toLowerCase()?.includes(q) ||
+          order.razorpay_payment_id?.toLowerCase()?.includes(q),
       )
     }
 
@@ -172,15 +214,21 @@ export default function AdminOrdersPage() {
 
   const updateOrderStatus = async (orderId: string, newStatus: Order["status"]) => {
     try {
-      const trackingNumber =
-        newStatus === "shipped" ? `TRK${Date.now()}${Math.random().toString(36).substr(2, 5).toUpperCase()}` : undefined
+      if (newStatus === "shipped") {
+        // Enforce providing tracking number via Edit screen
+        toast({
+          title: "Tracking required",
+          description: "Provide a tracking number in Edit Order before marking as shipped.",
+        })
+        window.location.href = `/admin/orders/${orderId}/edit`
+        return
+      }
 
       const response = await fetch(`/api/orders/${orderId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           status: newStatus,
-          tracking_number: trackingNumber,
           send_notification: true,
         }),
       })
@@ -189,7 +237,7 @@ export default function AdminOrdersPage() {
         setOrders(orders.map((order) => (order.id === orderId ? { ...order, status: newStatus } : order)))
         toast({
           title: "Success",
-          description: `Order status updated to ${newStatus}${trackingNumber ? ` with tracking number ${trackingNumber}` : ""}. Customer notification sent.`,
+          description: `Order status updated to ${newStatus}. Customer notification sent.`,
         })
       } else {
         throw new Error("Failed to update order status")
@@ -285,9 +333,148 @@ export default function AdminOrdersPage() {
       shipped: orders.filter((o) => o.status === "shipped").length,
       delivered: orders.filter((o) => o.status === "delivered").length,
       cancelled: orders.filter((o) => o.status === "cancelled").length,
-      totalRevenue: orders.filter((o) => o.status !== "cancelled").reduce((sum, o) => sum + o.total_amount, 0),
+      totalRevenue: orders
+        .filter((o) => o.status !== "cancelled")
+        .reduce((sum, o) => sum + Number(o.total_amount ?? 0), 0),
     }
     return stats
+  }
+
+  const fetchUserProfile = async (userId: string): Promise<UserProfile | null> => {
+    try {
+      if (!isLikelyValidUserId(userId)) return null
+      const response = await fetch(`/api/users/profile?userId=${userId}`)
+      if (response.ok) {
+        const profile = await response.json()
+        return profile
+      }
+      if (response.status === 404) return null
+    } catch (error) {
+      console.error(`Error fetching profile for user ${userId}:`, error)
+    }
+    return null
+  }
+
+  const formatUserId = (userId: string, email?: string, shippingName?: string) => {
+    const profile = userProfiles.get(userId)
+    const idShort = `${userId?.substring(0, 8) || ""}...`
+    if (profile?.name && profile.name.trim()) {
+      return `${profile.name} (${idShort})`
+    }
+    if (shippingName && shippingName.trim()) {
+      return `${shippingName} (${idShort})`
+    }
+    if (email && email.includes("@")) {
+      const emailName = email.split("@")[0]
+      return `${emailName} (${idShort})`
+    }
+    return idShort
+  }
+
+  const handleEditOrder = (orderId: string) => {
+    // Navigate to edit order page or open modal
+    window.location.href = `/admin/orders/${orderId}/edit`
+  }
+
+  const handlePrintInvoice = (order: Order) => {
+    const printWindow = window.open("", "_blank")
+    if (printWindow) {
+      printWindow.document.write(`
+        <html>
+          <head>
+            <title>Invoice - Order #${order.id}</title>
+            <style>
+              body { font-family: Arial, sans-serif; margin: 20px; }
+              .header { text-align: center; margin-bottom: 30px; }
+              .order-info { margin-bottom: 20px; }
+              .items-table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+              .items-table th, .items-table td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+              .items-table th { background-color: #f2f2f2; }
+              .total { font-weight: bold; font-size: 18px; }
+            </style>
+          </head>
+          <body>
+            <div class="header">
+              <h1>INVOICE</h1>
+              <p>Order #${order.id}</p>
+            </div>
+            <div class="order-info">
+              <p><strong>Date:</strong> ${new Date(order.created_at).toLocaleDateString("en-IN")}</p>
+              <p><strong>Customer:</strong> ${order.user_email || order.email || "N/A"}</p>
+              <p><strong>Payment Method:</strong> ${getPaymentMethodLabel(order.payment_method)}</p>
+              <p><strong>Payment Status:</strong> ${order.payment_status}</p>
+            </div>
+            <div class="shipping-address">
+              <h3>Shipping Address:</h3>
+              <p>${order.shipping_address?.name || "N/A"}</p>
+              <p>${order.shipping_address?.address || "N/A"}</p>
+              <p>${order.shipping_address?.city || "N/A"}, ${order.shipping_address?.state || "N/A"} ${order.shipping_address?.pincode || "N/A"}</p>
+              <p>Phone: ${order.shipping_address?.phone || "N/A"}</p>
+            </div>
+            <table class="items-table">
+              <thead>
+                <tr>
+                  <th>Item</th>
+                  <th>Quantity</th>
+                  <th>Price</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${
+                  order.items?.length
+                    ? (order.items as OrderItem[])
+                        .map(
+                          (item: OrderItem) => `
+                <tr>
+                  <td>${item.product_name || `Product ${item.product_id}`}</td>
+                  <td>${item.quantity}</td>
+                  <td>${formatINR(item.price)}</td>
+                  <td>${formatINR(item.total)}</td>
+                </tr>`,
+                        )
+                        .join("")
+                    : '<tr><td colspan="4">No items</td></tr>'
+                }
+              </tbody>
+            </table>
+            <div class="total">
+              <p>Delivery Fee: ${formatINR(order.delivery_fee ?? 0)}</p>
+              <p>Total Amount: ${formatINR(order.total_amount)}</p>
+            </div>
+          </body>
+        </html>
+      `)
+      printWindow.document.close()
+      printWindow.print()
+    }
+  }
+
+  const handleContactCustomer = (order: Order) => {
+    const email = order.user_email || order.email
+    const rawPhone = order.shipping_address?.phone || ""
+    const phoneDigits = rawPhone.replace(/\D+/g, "")
+    if (email) {
+      const subject = `Regarding Your Order #${order.id}`
+      const body = `Dear Customer,\n\nWe hope this message finds you well. We are writing regarding your recent order #${order.id}.\n\nOrder Details:\n- Order Date: ${new Date(order.created_at).toLocaleDateString("en-IN")}\n- Total Amount: ${formatINR(order.total_amount)}\n- Status: ${order.status}\n\nIf you have any questions or concerns, please don't hesitate to reach out to us.\n\nBest regards,\nCustomer Service Team`
+      window.location.href = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
+      return
+    }
+    if (phoneDigits) {
+      window.location.href = `tel:${phoneDigits}`
+    }
+  }
+
+  const handleViewInRazorpay = (order: Order) => {
+    if (order.razorpay_payment_id) {
+      const url = `https://dashboard.razorpay.com/app/payments/${order.razorpay_payment_id}`
+      window.open(url, "_blank", "noopener,noreferrer")
+      return
+    }
+    if (order.razorpay_order_id) {
+      const url = `https://dashboard.razorpay.com/app/orders/${order.razorpay_order_id}`
+      window.open(url, "_blank", "noopener,noreferrer")
+    }
   }
 
   if (loading || isLoading) {
@@ -388,7 +575,7 @@ export default function AdminOrdersPage() {
           <Card>
             <CardContent className="pt-4">
               <div className="text-center">
-                <div className="text-lg font-bold text-green-600">₹{stats.totalRevenue.toLocaleString("en-IN")}</div>
+                <div className="text-lg font-bold text-green-600">{formatINR(stats.totalRevenue)}</div>
                 <div className="text-sm text-gray-600">Revenue</div>
               </div>
             </CardContent>
@@ -455,8 +642,8 @@ export default function AdminOrdersPage() {
               </CardContent>
             </Card>
           ) : (
-            filteredOrders.map((order) => (
-              <Card key={order.id}>
+            filteredOrders.map((order: Order) => (
+              <Card key={`order-${order.id}`}>
                 <CardHeader>
                   <div className="flex justify-between items-start">
                     <div>
@@ -473,14 +660,15 @@ export default function AdminOrdersPage() {
                       <div className="flex items-center gap-4 text-sm text-gray-600 mt-1">
                         <span className="flex items-center gap-1">
                           <User className="h-4 w-4" />
-                          {order.user_email}
+                          {order.user_email || order.email || "Not provided"}
                         </span>
                         <span className="flex items-center gap-1">
                           <Calendar className="h-4 w-4" />
                           {new Date(order.created_at).toLocaleDateString("en-IN")}
                         </span>
                         <span className="flex items-center gap-1">
-                          <DollarSign className="h-4 w-4" />₹{order.total_amount.toLocaleString("en-IN")}
+                          <DollarSign className="h-4 w-4" />
+                          {formatINR(order.total_amount)}
                         </span>
                       </div>
                     </div>
@@ -513,8 +701,8 @@ export default function AdminOrdersPage() {
                     <div>
                       <h4 className="font-medium mb-3">Items ({order.items?.length || 0})</h4>
                       <div className="space-y-2">
-                        {order.items?.map((item) => (
-                          <div key={item.id} className="flex items-center gap-3">
+                        {(order.items as OrderItem[] | undefined)?.map((item: OrderItem) => (
+                          <div key={`item-${item.id}-${order.id}`} className="flex items-center gap-3">
                             <img
                               src={item.product_image || "/placeholder.svg?height=48&width=48"}
                               alt={item.product_name || "Product"}
@@ -523,8 +711,7 @@ export default function AdminOrdersPage() {
                             <div className="flex-1">
                               <p className="text-sm font-medium">{item.product_name || `Product ${item.product_id}`}</p>
                               <p className="text-xs text-gray-600">
-                                {item.quantity} × ₹{(item.price || 0).toLocaleString("en-IN")} = ₹
-                                {(item.total || 0).toLocaleString("en-IN")}
+                                {item.quantity} × {formatINR(item.price)} = {formatINR(item.total)}
                               </p>
                             </div>
                           </div>
@@ -537,10 +724,11 @@ export default function AdminOrdersPage() {
                       <h4 className="font-medium mb-3">Customer & Shipping</h4>
                       <div className="space-y-2 text-sm">
                         <p>
-                          <strong>Email:</strong> {order.user_email}
+                          <strong>Email:</strong> {order.user_email || order.email || "Not provided"}
                         </p>
                         <p>
-                          <strong>User ID:</strong> {order.user_id}
+                          <strong>User:</strong>{" "}
+                          {formatUserId(order.user_id, order.user_email || order.email, order.shipping_address?.name)}
                         </p>
                         <div className="pt-2">
                           <p className="font-medium flex items-center gap-1">
@@ -548,13 +736,13 @@ export default function AdminOrdersPage() {
                             Shipping Address
                           </p>
                           <div className="text-gray-600 ml-5">
-                            <p>{order.shipping_address.name}</p>
-                            <p>{order.shipping_address.address}</p>
+                            <p>{order.shipping_address?.name || "Name not provided"}</p>
+                            <p>{order.shipping_address?.address || "Address not provided"}</p>
                             <p>
-                              {order.shipping_address.city}, {order.shipping_address.state}
+                              {order.shipping_address?.city || "City"}, {order.shipping_address?.state || "State"}
                             </p>
-                            <p>{order.shipping_address.pincode}</p>
-                            <p>{order.shipping_address.phone}</p>
+                            <p>{order.shipping_address?.pincode || "Pincode not provided"}</p>
+                            <p>{order.shipping_address?.phone || "Phone not provided"}</p>
                           </div>
                         </div>
                       </div>
@@ -604,6 +792,21 @@ export default function AdminOrdersPage() {
                             </p>
                           </div>
                         )}
+                        <p>
+                          <strong>Delivery Fee:</strong> {formatINR(order.delivery_fee ?? 0)}
+                        </p>
+                        {order.user_notes ? (
+                          <div className="mt-2">
+                            <p className="font-medium">Customer Notes</p>
+                            <p className="text-gray-700 text-sm whitespace-pre-wrap">{order.user_notes}</p>
+                          </div>
+                        ) : null}
+                        {order.admin_notes ? (
+                          <div className="mt-2">
+                            <p className="font-medium">Admin Notes</p>
+                            <p className="text-gray-700 text-sm whitespace-pre-wrap">{order.admin_notes}</p>
+                          </div>
+                        ) : null}
                       </div>
                     </div>
 
@@ -620,20 +823,40 @@ export default function AdminOrdersPage() {
                           </p>
                         </div>
                         <div className="space-y-2">
-                          <Button variant="outline" size="sm" className="w-full bg-transparent">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full bg-transparent"
+                            onClick={() => handleEditOrder(order.id)}
+                          >
                             <Edit className="h-4 w-4 mr-2" />
                             Edit Order
                           </Button>
-                          <Button variant="outline" size="sm" className="w-full bg-transparent">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full bg-transparent"
+                            onClick={() => handlePrintInvoice(order)}
+                          >
                             <Package className="h-4 w-4 mr-2" />
                             Print Invoice
                           </Button>
-                          <Button variant="outline" size="sm" className="w-full bg-transparent">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full bg-transparent"
+                            onClick={() => handleContactCustomer(order)}
+                          >
                             <Smartphone className="h-4 w-4 mr-2" />
                             Contact Customer
                           </Button>
                           {order.payment_method === "razorpay" && order.razorpay_payment_id && (
-                            <Button variant="outline" size="sm" className="w-full bg-transparent">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="w-full bg-transparent"
+                              onClick={() => handleViewInRazorpay(order)}
+                            >
                               <Globe className="h-4 w-4 mr-2" />
                               View in Razorpay
                             </Button>

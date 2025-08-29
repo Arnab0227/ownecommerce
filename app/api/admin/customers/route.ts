@@ -21,20 +21,20 @@ export async function GET() {
       FROM users u
       LEFT JOIN (
         SELECT 
-          user_id,
+          user_id::text,
           COUNT(*) as total_orders,
           SUM(total_amount) as total_spent
         FROM orders
-        GROUP BY user_id
-      ) order_stats ON u.id = order_stats.user_id
-      LEFT JOIN loyalty_points loyalty ON u.id = loyalty.user_id
+        GROUP BY user_id::text
+      ) order_stats ON u.id::text = order_stats.user_id
+      LEFT JOIN loyalty_points loyalty ON u.id::text = loyalty.user_id::text
       ORDER BY u.created_at DESC
     `
 
     // Get addresses for each customer
     const addresses = await sql`
       SELECT 
-        user_id,
+        user_id::text,
         street,
         city,
         state,
@@ -47,7 +47,7 @@ export async function GET() {
     // Get recent orders for each customer
     const recentOrders = await sql`
       SELECT 
-        user_id,
+        user_id::text,
         id,
         total_amount as total,
         status,

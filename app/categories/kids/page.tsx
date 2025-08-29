@@ -5,7 +5,10 @@ import { ProductCard } from "@/components/product-card"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Filter, SlidersHorizontal, Baby, Users } from "lucide-react"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Slider } from "@/components/ui/slider"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Filter, SlidersHorizontal, Baby, Users, Sliders } from "lucide-react"
 import type { Product } from "@/types"
 
 export default function KidsCategoryPage() {
@@ -13,7 +16,11 @@ export default function KidsCategoryPage() {
   const [loading, setLoading] = useState(true)
   const [selectedCategory, setSelectedCategory] = useState("all")
   const [ageGroup, setAgeGroup] = useState("all")
-  const [priceRange, setPriceRange] = useState("all")
+  const [priceRange, setPriceRange] = useState([0, 5000])
+  const [sortBy, setSortBy] = useState("featured")
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState(false)
+  const [materialFilter, setMaterialFilter] = useState<string[]>([])
+  const [ratingFilter, setRatingFilter] = useState(0)
 
   const categories = [
     { id: "all", name: "All Items", count: 0 },
@@ -28,14 +35,6 @@ export default function KidsCategoryPage() {
     { id: "toddler", name: "Toddler (2-4 years)" },
     { id: "kids", name: "Kids (4-8 years)" },
     { id: "tweens", name: "Tweens (8-12 years)" },
-  ]
-
-  const priceRanges = [
-    { id: "all", name: "All Prices" },
-    { id: "under-500", name: "Under ₹500" },
-    { id: "500-1000", name: "₹500 - ₹1,000" },
-    { id: "1000-2000", name: "₹1,000 - ₹2,000" },
-    { id: "above-2000", name: "Above ₹2,000" },
   ]
 
   useEffect(() => {
@@ -59,14 +58,58 @@ export default function KidsCategoryPage() {
   const filteredProducts = products.filter((product) => {
     const categoryMatch = selectedCategory === "all" || product.category === selectedCategory
 
-    let priceMatch = true
-    if (priceRange === "under-500") priceMatch = product.price < 500
-    else if (priceRange === "500-1000") priceMatch = product.price >= 500 && product.price <= 1000
-    else if (priceRange === "1000-2000") priceMatch = product.price >= 1000 && product.price <= 2000
-    else if (priceRange === "above-2000") priceMatch = product.price > 2000
+    // Price range filter using slider values
+    const priceMatch = product.price >= priceRange[0] && product.price <= priceRange[1]
 
-    return categoryMatch && priceMatch
+    // Material filter
+    let materialMatch = true
+    if (materialFilter.length > 0) {
+      const productText = `${product.name} ${product.description}`.toLowerCase()
+      materialMatch = materialFilter.some((material) => productText.includes(material.toLowerCase()))
+    }
+
+    // Rating filter
+    const ratingMatch = ratingFilter === 0 || (product.rating || 0) >= ratingFilter
+
+    return categoryMatch && priceMatch && materialMatch && ratingMatch
   })
+
+  const sortedProducts = [...filteredProducts].sort((a, b) => {
+    switch (sortBy) {
+      case "price-low":
+        return a.price - b.price
+      case "price-high":
+        return b.price - a.price
+      case "name":
+        return a.name.localeCompare(b.name)
+      case "rating":
+        return (b.rating || 0) - (a.rating || 0)
+      case "newest":
+        return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+      case "popularity":
+        return (a.stock || 0) - (b.stock || 0) // Lower stock = more popular
+      default:
+        return 0 // Keep original order for "featured"
+    }
+  })
+
+  const availableMaterials = Array.from(
+    new Set(
+      products.flatMap((product) => {
+        const text = `${product.name} ${product.description}`.toLowerCase()
+        const materials = ["cotton", "polyester", "fleece", "denim", "jersey", "organic cotton"]
+        return materials.filter((material) => text.includes(material))
+      }),
+    ),
+  )
+
+  const handleMaterialChange = (material: string, checked: boolean) => {
+    if (checked) {
+      setMaterialFilter([...materialFilter, material])
+    } else {
+      setMaterialFilter(materialFilter.filter((m) => m !== material))
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -138,23 +181,72 @@ export default function KidsCategoryPage() {
                   </div>
                 </div>
 
-                {/* Price Filter */}
                 <div className="mb-6">
                   <h3 className="font-medium mb-3">Price Range</h3>
-                  <div className="space-y-2">
-                    {priceRanges.map((range) => (
-                      <button
-                        key={range.id}
-                        onClick={() => setPriceRange(range.id)}
-                        className={`w-full text-left p-2 rounded-lg transition-colors ${
-                          priceRange === range.id ? "bg-pink-100 text-pink-700 font-medium" : "hover:bg-gray-100"
-                        }`}
-                      >
-                        {range.name}
-                      </button>
-                    ))}
+                  <Slider
+                    value={priceRange}
+                    onValueChange={setPriceRange}
+                    max={5000}
+                    min={0}
+                    step={50}
+                    className="mb-2"
+                  />
+                  <div className="flex justify-between text-sm text-gray-600">
+                    <span>₹{priceRange[0]}</span>
+                    <span>₹{priceRange[1]}</span>
                   </div>
                 </div>
+
+                <Button
+                  variant="outline"
+                  onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+                  className="w-full mb-4 flex items-center gap-2"
+                >
+                  <Sliders className="h-4 w-4" />
+                  Advanced Filters
+                </Button>
+
+                {showAdvancedFilters && (
+                  <div className="space-y-6 mb-6">
+                    {/* Material Filter */}
+                    {availableMaterials.length > 0 && (
+                      <div>
+                        <h3 className="font-medium mb-3">Material</h3>
+                        <div className="space-y-2">
+                          {availableMaterials.map((material) => (
+                            <div key={material} className="flex items-center space-x-2">
+                              <Checkbox
+                                id={material}
+                                checked={materialFilter.includes(material)}
+                                onCheckedChange={(checked) => handleMaterialChange(material, checked as boolean)}
+                              />
+                              <label htmlFor={material} className="text-sm capitalize">
+                                {material}
+                              </label>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Rating Filter */}
+                    <div>
+                      <h3 className="font-medium mb-3">Minimum Rating</h3>
+                      <Select value={ratingFilter.toString()} onValueChange={(value) => setRatingFilter(Number(value))}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Any Rating" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="0">Any Rating</SelectItem>
+                          <SelectItem value="1">1+ Stars</SelectItem>
+                          <SelectItem value="2">2+ Stars</SelectItem>
+                          <SelectItem value="3">3+ Stars</SelectItem>
+                          <SelectItem value="4">4+ Stars</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                )}
 
                 <Button
                   variant="outline"
@@ -162,7 +254,10 @@ export default function KidsCategoryPage() {
                   onClick={() => {
                     setSelectedCategory("all")
                     setAgeGroup("all")
-                    setPriceRange("all")
+                    setPriceRange([0, 5000])
+                    setMaterialFilter([])
+                    setRatingFilter(0)
+                    setSortBy("featured")
                   }}
                 >
                   Clear All Filters
@@ -180,18 +275,25 @@ export default function KidsCategoryPage() {
                     ? "All Kids' Items"
                     : categories.find((c) => c.id === selectedCategory)?.name}
                 </h2>
-                <p className="text-gray-600">{filteredProducts.length} products found</p>
+                <p className="text-gray-600">{sortedProducts.length} products found</p>
               </div>
 
               <div className="flex items-center space-x-2">
                 <Filter className="h-4 w-4 text-gray-600" />
-                <select className="border rounded-lg px-3 py-2 text-sm">
-                  <option>Sort by: Featured</option>
-                  <option>Price: Low to High</option>
-                  <option>Price: High to Low</option>
-                  <option>Newest First</option>
-                  <option>Customer Rating</option>
-                </select>
+                <Select value={sortBy} onValueChange={setSortBy}>
+                  <SelectTrigger className="w-48">
+                    <SelectValue placeholder="Sort by" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="featured">Sort by: Featured</SelectItem>
+                    <SelectItem value="price-low">Price: Low to High</SelectItem>
+                    <SelectItem value="price-high">Price: High to Low</SelectItem>
+                    <SelectItem value="newest">Newest First</SelectItem>
+                    <SelectItem value="rating">Customer Rating</SelectItem>
+                    <SelectItem value="name">Name A-Z</SelectItem>
+                    <SelectItem value="popularity">Popularity</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
@@ -203,13 +305,13 @@ export default function KidsCategoryPage() {
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {filteredProducts.map((product) => (
+                {sortedProducts.map((product) => (
                   <ProductCard key={product.id} product={product} />
                 ))}
               </div>
             )}
 
-            {!loading && filteredProducts.length === 0 && (
+            {!loading && sortedProducts.length === 0 && (
               <div className="text-center py-16">
                 <div className="text-gray-400 mb-4">
                   <Baby className="h-16 w-16 mx-auto" />
@@ -220,7 +322,10 @@ export default function KidsCategoryPage() {
                   onClick={() => {
                     setSelectedCategory("all")
                     setAgeGroup("all")
-                    setPriceRange("all")
+                    setPriceRange([0, 5000])
+                    setMaterialFilter([])
+                    setRatingFilter(0)
+                    setSortBy("featured")
                   }}
                   className="bg-gradient-to-r from-orange-500 to-pink-600"
                 >

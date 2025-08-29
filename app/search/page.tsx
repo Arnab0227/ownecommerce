@@ -9,18 +9,21 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ProductCard } from "@/components/product-card"
-import { Search, Filter, SortAsc, Loader2 } from "lucide-react"
+import { Search, Filter, SortAsc, Loader2, Sliders } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Slider } from "@/components/ui/slider"
+import { Checkbox } from "@/components/ui/checkbox"
 
 interface SearchResult {
   id: string
   name: string
   description: string
   price: number
-  originalPrice: number
+  original_price?: number // Made optional to match API response
   category: string
-  stock: number
-  imageUrl: string
+  stock?: number // Made optional to handle undefined values
+  image_url?: string
+  rating?: number
 }
 
 interface SearchResponse {
@@ -38,6 +41,10 @@ function SearchPageContent() {
   const [loading, setLoading] = useState(false)
   const [sortBy, setSortBy] = useState("relevance")
   const [filterCategory, setFilterCategory] = useState("all")
+  const [priceRange, setPriceRange] = useState([0, 10000])
+  const [showFilters, setShowFilters] = useState(false)
+  const [materialFilter, setMaterialFilter] = useState<string[]>([])
+  const [ratingFilter, setRatingFilter] = useState(0)
 
   useEffect(() => {
     if (initialQuery) {
@@ -50,7 +57,8 @@ function SearchPageContent() {
 
     setLoading(true)
     try {
-      const response = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}`)
+      const userId = localStorage.getItem("userId") || "anonymous"
+      const response = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}&user_id=${userId}`)
       if (response.ok) {
         const data = await response.json()
         setResults(data)
@@ -73,12 +81,26 @@ function SearchPageContent() {
 
   const allResults = results ? [...results.exactMatches, ...results.suggestedMatches] : []
 
-  // Filter results
-  const filteredResults = allResults.filter(
-    (product) => filterCategory === "all" || product.category === filterCategory,
-  )
+  const filteredResults = allResults.filter((product) => {
+    // Category filter
+    if (filterCategory !== "all" && product.category !== filterCategory) return false
 
-  // Sort results
+    // Price range filter
+    if (product.price < priceRange[0] || product.price > priceRange[1]) return false
+
+    // Material filter (check if product name/description contains material keywords)
+    if (materialFilter.length > 0) {
+      const productText = `${product.name} ${product.description}`.toLowerCase()
+      const hasMatchingMaterial = materialFilter.some((material) => productText.includes(material.toLowerCase()))
+      if (!hasMatchingMaterial) return false
+    }
+
+    // Rating filter
+    if (ratingFilter > 0 && (product.rating || 0) < ratingFilter) return false
+
+    return true
+  })
+
   const sortedResults = [...filteredResults].sort((a, b) => {
     switch (sortBy) {
       case "price-low":
@@ -87,10 +109,33 @@ function SearchPageContent() {
         return b.price - a.price
       case "name":
         return a.name.localeCompare(b.name)
+      case "rating":
+        return (b.rating || 0) - (a.rating || 0)
+      case "popularity":
+        // Mock popularity based on lower stock = more popular
+        return (a.stock || 0) - (b.stock || 0)
       default:
         return 0 // Keep original relevance order
     }
   })
+
+  const availableMaterials = Array.from(
+    new Set(
+      allResults.flatMap((product) => {
+        const text = `${product.name} ${product.description}`.toLowerCase()
+        const materials = ["cotton", "silk", "polyester", "rayon", "linen", "chiffon", "georgette"]
+        return materials.filter((material) => text.includes(material))
+      }),
+    ),
+  )
+
+  const handleMaterialChange = (material: string, checked: boolean) => {
+    if (checked) {
+      setMaterialFilter([...materialFilter, material])
+    } else {
+      setMaterialFilter(materialFilter.filter((m) => m !== material))
+    }
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -123,42 +168,121 @@ function SearchPageContent() {
               <Badge variant="secondary" className="text-sm">
                 {initialQuery}
               </Badge>
-              {results && <span>({allResults.length} products found)</span>}
+              {results && (
+                <span>
+                  ({sortedResults.length} of {allResults.length} products shown)
+                </span>
+              )}
             </div>
           )}
         </div>
 
-        {/* Filters and Sort */}
         {results && allResults.length > 0 && (
-          <div className="flex flex-col sm:flex-row gap-4 mb-6">
-            <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-gray-500" />
-              <Select value={filterCategory} onValueChange={setFilterCategory}>
-                <SelectTrigger className="w-40">
-                  <SelectValue placeholder="Category" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Categories</SelectItem>
-                  <SelectItem value="women">Women</SelectItem>
-                  <SelectItem value="kids">Kids</SelectItem>
-                </SelectContent>
-              </Select>
+          <div className="mb-6">
+            <div className="flex flex-col sm:flex-row gap-4 mb-4">
+              <div className="flex items-center gap-2">
+                <Filter className="h-4 w-4 text-gray-500" />
+                <Select value={filterCategory} onValueChange={setFilterCategory}>
+                  <SelectTrigger className="w-40">
+                    <SelectValue placeholder="Category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Categories</SelectItem>
+                    <SelectItem value="women">Women</SelectItem>
+                    <SelectItem value="kids">Kids</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <SortAsc className="h-4 w-4 text-gray-500" />
+                <Select value={sortBy} onValueChange={setSortBy}>
+                  <SelectTrigger className="w-48">
+                    <SelectValue placeholder="Sort by" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="relevance">Relevance</SelectItem>
+                    <SelectItem value="price-low">Price: Low to High</SelectItem>
+                    <SelectItem value="price-high">Price: High to Low</SelectItem>
+                    <SelectItem value="name">Name A-Z</SelectItem>
+                    <SelectItem value="rating">Rating</SelectItem>
+                    <SelectItem value="popularity">Popularity</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <Button
+                variant="outline"
+                onClick={() => setShowFilters(!showFilters)}
+                className="flex items-center gap-2"
+              >
+                <Sliders className="h-4 w-4" />
+                Advanced Filters
+              </Button>
             </div>
 
-            <div className="flex items-center gap-2">
-              <SortAsc className="h-4 w-4 text-gray-500" />
-              <Select value={sortBy} onValueChange={setSortBy}>
-                <SelectTrigger className="w-40">
-                  <SelectValue placeholder="Sort by" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="relevance">Relevance</SelectItem>
-                  <SelectItem value="price-low">Price: Low to High</SelectItem>
-                  <SelectItem value="price-high">Price: High to Low</SelectItem>
-                  <SelectItem value="name">Name A-Z</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            {showFilters && (
+              <Card className="mb-4">
+                <CardContent className="pt-6">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {/* Price Range */}
+                    <div>
+                      <h4 className="font-medium mb-3">Price Range</h4>
+                      <Slider
+                        value={priceRange}
+                        onValueChange={setPriceRange}
+                        max={10000}
+                        min={0}
+                        step={100}
+                        className="mb-2"
+                      />
+                      <div className="flex justify-between text-sm text-gray-600">
+                        <span>₹{priceRange[0]}</span>
+                        <span>₹{priceRange[1]}</span>
+                      </div>
+                    </div>
+
+                    {/* Material Filter */}
+                    {availableMaterials.length > 0 && (
+                      <div>
+                        <h4 className="font-medium mb-3">Material</h4>
+                        <div className="space-y-2">
+                          {availableMaterials.map((material) => (
+                            <div key={material} className="flex items-center space-x-2">
+                              <Checkbox
+                                id={material}
+                                checked={materialFilter.includes(material)}
+                                onCheckedChange={(checked) => handleMaterialChange(material, checked as boolean)}
+                              />
+                              <label htmlFor={material} className="text-sm capitalize">
+                                {material}
+                              </label>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Rating Filter */}
+                    <div>
+                      <h4 className="font-medium mb-3">Minimum Rating</h4>
+                      <Select value={ratingFilter.toString()} onValueChange={(value) => setRatingFilter(Number(value))}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Any Rating" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="0">Any Rating</SelectItem>
+                          <SelectItem value="1">1+ Stars</SelectItem>
+                          <SelectItem value="2">2+ Stars</SelectItem>
+                          <SelectItem value="3">3+ Stars</SelectItem>
+                          <SelectItem value="4">4+ Stars</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
         )}
 
@@ -175,12 +299,17 @@ function SearchPageContent() {
                 {sortedResults.map((product) => (
                   <ProductCard
                     key={product.id}
-                    id={product.id}
-                    name={product.name}
-                    price={product.price}
-                    originalPrice={product.originalPrice || product.price} // Fixed originalPrice fallback
-                    image={product.imageUrl}
-                    category={product.category}
+                    product={{
+                      id: product.id,
+                      name: product.name,
+                      description: product.description,
+                      price: product.price,
+                      original_price: product.original_price || product.price,
+                      imageUrl: product.image_url,
+                      category: product.category,
+                      stock: product.stock || 0, // Provide default value for stock
+                      rating: product.rating,
+                    }}
                   />
                 ))}
               </div>
@@ -189,7 +318,7 @@ function SearchPageContent() {
                 <CardContent className="py-12 text-center">
                   <Search className="h-16 w-16 text-gray-300 mx-auto mb-4" />
                   <h3 className="text-xl font-semibold text-gray-900 mb-2">No products found</h3>
-                  <p className="text-gray-600 mb-4">Try different keywords or check your spelling</p>
+                  <p className="text-gray-600 mb-4">Try adjusting your filters or search terms</p>
                   {results.suggestions.length > 0 && (
                     <div>
                       <p className="text-sm text-gray-500 mb-2">Did you mean:</p>

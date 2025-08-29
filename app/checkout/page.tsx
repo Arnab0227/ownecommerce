@@ -65,10 +65,13 @@ export default function CheckoutPage() {
   // Payment state
   const [paymentMethod, setPaymentMethod] = useState("cod")
 
+  // Optional user order note
+  const [orderNote, setOrderNote] = useState("")
+
   const totalAmount = getTotalPrice()
-  const shippingFee = totalAmount >= 999 ? 0 : 50
-  const tax = Math.round(totalAmount * 0.18)
-  const finalAmount = totalAmount + shippingFee + tax
+  const shippingFee = totalAmount >= 799 ? 0 : 79
+  const tax = 0
+  const finalAmount = totalAmount + shippingFee
 
   useEffect(() => {
     const initializeCheckout = async () => {
@@ -411,10 +414,12 @@ export default function CheckoutPage() {
           price: item.price,
         })),
         total_amount: finalAmount,
+        delivery_fee: shippingFee,
         shipping_address: selectedAddress,
         payment_method: paymentMethod,
         payment_status: paymentStatus,
         razorpay_order_id: razorpayOrderId || null,
+        user_notes: orderNote || null,
       }
 
       const response = await fetch("/api/orders", {
@@ -740,6 +745,19 @@ export default function CheckoutPage() {
                       </div>
                     </div>
                   )}
+
+                  {/* Optional Order Notes */}
+                  <div className="space-y-2">
+                    <Label htmlFor="order_note">Order Notes (optional)</Label>
+                    <textarea
+                      id="order_note"
+                      className="w-full border rounded-md p-2 text-sm"
+                      rows={3}
+                      placeholder="Any special instructions for delivery..."
+                      value={orderNote}
+                      onChange={(e) => setOrderNote(e.target.value)}
+                    />
+                  </div>
                 </CardContent>
               </Card>
 
@@ -825,10 +843,6 @@ export default function CheckoutPage() {
                         {shippingFee === 0 ? <span className="text-green-600">Free</span> : `₹${shippingFee}`}
                       </span>
                     </div>
-                    <div className="flex justify-between">
-                      <span>Tax (18%)</span>
-                      <span>₹{tax.toLocaleString("en-IN")}</span>
-                    </div>
                     <div className="border-t pt-2 flex justify-between font-bold text-lg">
                       <span>Total</span>
                       <span>₹{finalAmount.toLocaleString("en-IN")}</span>
@@ -855,9 +869,9 @@ export default function CheckoutPage() {
                     )}
                   </Button>
 
-                  {totalAmount < 999 && (
+                  {totalAmount < 799 && (
                     <div className="text-xs text-center text-gray-600">
-                      Add ₹{(999 - totalAmount).toLocaleString("en-IN")} more for free shipping
+                      Add ₹{(799 - totalAmount).toLocaleString("en-IN")} more for free shipping
                     </div>
                   )}
                 </CardContent>

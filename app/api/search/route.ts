@@ -91,13 +91,20 @@ function correctTypos(query: string): string {
   return corrected
 }
 
-function generateSearchSuggestions(query: string): string[] {
+function generateSearchSuggestions(query: string, userSearches: string[] = []): string[] {
   const correctedQuery = correctTypos(query)
   const suggestions: Set<string> = new Set()
 
   if (correctedQuery !== query.toLowerCase()) {
     suggestions.add(correctedQuery)
   }
+
+  // Add matching user previous searches
+  userSearches.forEach((search) => {
+    if (search.toLowerCase().includes(query.toLowerCase()) && search.toLowerCase() !== query.toLowerCase()) {
+      suggestions.add(search)
+    }
+  })
 
   const queryWords = correctedQuery.split(" ")
   Object.values(CATEGORY_KEYWORDS)
@@ -112,7 +119,7 @@ function generateSearchSuggestions(query: string): string[] {
       }
     })
 
-  return Array.from(suggestions).slice(0, 5)
+  return Array.from(suggestions).slice(0, 8)
 }
 
 function calculateRelevanceScore(product: any, query: string): number {
@@ -166,8 +173,61 @@ async function ensureSearchTablesExist() {
         created_at TIMESTAMP DEFAULT NOW()
       )
     `
+
+    await sql`
+      CREATE TABLE IF NOT EXISTS trending_searches (
+        id SERIAL PRIMARY KEY,
+        query VARCHAR(255) UNIQUE NOT NULL,
+        search_count INTEGER DEFAULT 1,
+        last_searched TIMESTAMP DEFAULT NOW()
+      )
+    `
   } catch (error) {
     console.log("Search tables creation failed (may already exist):", error)
+  }
+}
+
+async function getUserPreviousSearches(userId?: string | null): Promise<string[]> {
+  if (!userId) return []
+
+  try {
+    const searches = await sql`
+      SELECT query, created_at
+      FROM recent_searches 
+      WHERE user_id = ${userId}
+      ORDER BY created_at DESC 
+      LIMIT 10
+    `
+    // Remove duplicates in JavaScript instead of SQL
+    const uniqueQueries = [...new Set(searches.map((s) => s.query))]
+    return uniqueQueries
+  } catch (error) {
+    console.log("Failed to get user searches:", error)
+    return []
+  }
+}
+
+async function getTrendingSearches(): Promise<string[]> {
+  try {
+    const trending = await sql`
+      SELECT query 
+      FROM trending_searches 
+      ORDER BY search_count DESC, last_searched DESC 
+      LIMIT 8
+    `
+    return trending.map((t) => t.query)
+  } catch (error) {
+    console.log("Failed to get trending searches:", error)
+    return [
+      "Silk Saree",
+      "Cotton Kurti",
+      "Kids Frock",
+      "Designer Lehenga",
+      "Nighty",
+      "Kurta Pajama",
+      "Maxi Dress",
+      "Co-ord Set",
+    ]
   }
 }
 
@@ -175,22 +235,41 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const query = searchParams.get("q")?.trim()
+    const userId = searchParams.get("user_id") // This can be string | null
 
     if (!query) {
+      const trendingSearches = await getTrendingSearches()
       return NextResponse.json({
         exactMatches: [],
         suggestedMatches: [],
         suggestions: [],
+        trendingSearches,
       })
     }
 
     await ensureSearchTablesExist()
 
-    // Log search for analytics
     try {
+      if (userId) {
+        await sql`
+          INSERT INTO recent_searches (user_id, query, created_at)
+          VALUES (${userId}, ${query}, NOW())
+        `
+      }
+
+      // Update trending searches
       await sql`
-        INSERT INTO search_analytics (query, results_count, created_at)
-        VALUES (${query}, 0, NOW())
+        INSERT INTO trending_searches (query, search_count, last_searched)
+        VALUES (${query}, 1, NOW())
+        ON CONFLICT (query) 
+        DO UPDATE SET 
+          search_count = trending_searches.search_count + 1,
+          last_searched = NOW()
+      `
+
+      await sql`
+        INSERT INTO search_analytics (query, results_count, user_id, created_at)
+        VALUES (${query}, 0, ${userId}, NOW())
       `
     } catch (analyticsError) {
       console.log("Analytics logging failed:", analyticsError)
@@ -277,8 +356,9 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    // Generate search suggestions
-    const suggestions = generateSearchSuggestions(query)
+    const userSearches = await getUserPreviousSearches(userId) // Now properly typed
+
+    const suggestions = generateSearchSuggestions(query, userSearches)
 
     // Update analytics with results count
     try {
@@ -298,6 +378,7 @@ export async function GET(request: NextRequest) {
       exactMatches: exactMatches.slice(0, 8),
       suggestedMatches: suggestedMatches.slice(0, 8),
       suggestions,
+      trendingSearches: await getTrendingSearches(),
     })
   } catch (error) {
     console.error("Search error:", error)
@@ -307,6 +388,7 @@ export async function GET(request: NextRequest) {
         exactMatches: [],
         suggestedMatches: [],
         suggestions: [],
+        trendingSearches: [],
       },
       { status: 500 },
     )
