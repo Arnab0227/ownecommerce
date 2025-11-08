@@ -11,6 +11,9 @@ export const NEXT_PUBLIC_BASE_URL = process.env.NEXT_PUBLIC_BASE_URL!
 export const NODE_ENV = process.env.NODE_ENV || "development"
 export const ADMIN_EMAIL = process.env.ADMIN_EMAIL!
 
+export const KV_REST_API_URL = process.env.KV_REST_API_URL
+export const KV_REST_API_TOKEN = process.env.KV_REST_API_TOKEN
+
 // Firebase Client (Public)
 export const FIREBASE_CONFIG = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY!,
@@ -31,13 +34,16 @@ export const FIREBASE_ADMIN_CONFIG = {
 // Razorpay Configuration
 export const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID!
 export const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET!
-export const NEXT_PUBLIC_RAZORPAY_KEY_ID = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID!
 
 // Email Service
 export const RESEND_API_KEY = process.env.RESEND_API_KEY
 export const SENDGRID_API_KEY = process.env.SENDGRID_API_KEY
 export const FROM_EMAIL = process.env.FROM_EMAIL!
 export const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL!
+
+export const TWILIO_ACCOUNT_SID = process.env.TWILIO_ACCOUNT_SID
+export const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN
+export const TWILIO_WHATSAPP_NUMBER = process.env.TWILIO_WHATSAPP_NUMBER
 
 // Optional: Only if you need additional encryption for sensitive data
 export const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY // Optional
@@ -68,10 +74,15 @@ export function validateEnvironment() {
     // Razorpay Config
     "RAZORPAY_KEY_ID",
     "RAZORPAY_KEY_SECRET",
-    "NEXT_PUBLIC_RAZORPAY_KEY_ID",
     // Email
     "FROM_EMAIL",
     "SUPPORT_EMAIL",
+    //Resend
+    "RESEND_API_KEY",
+    //whatsapp
+    "TWILIO_ACCOUNT_SID",
+    "TWILIO_AUTH_TOKEN",
+    "TWILIO_WHATSAPP_NUMBER",
   ]
 
   const missing = requiredVars.filter((varName) => !process.env[varName])
@@ -80,10 +91,6 @@ export function validateEnvironment() {
     throw new Error(`Missing required environment variables: ${missing.join(", ")}`)
   }
 
-  // Validate email service
-  if (!RESEND_API_KEY && !SENDGRID_API_KEY) {
-    throw new Error("Either RESEND_API_KEY or SENDGRID_API_KEY must be provided")
-  }
 
   console.log("✅ Environment variables validated successfully (Firebase Auth + Razorpay)")
 }

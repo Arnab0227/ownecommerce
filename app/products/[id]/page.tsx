@@ -7,23 +7,41 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import { Star, ShoppingCart, Heart, Truck, Shield, RotateCcw, Minus, Plus } from 'lucide-react'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Star, ShoppingCart, Heart, Truck, Shield, RotateCcw, Minus, Plus } from "lucide-react"
 import { useCart, type Product } from "@/hooks/use-cart"
+import { useAuth } from "@/hooks/use-firebase-auth"
 import { toast } from "@/hooks/use-toast"
+import { ReviewList } from "@/components/reviews/review-list"
+import { ReviewForm } from "@/components/reviews/review-form"
+import { ReviewSummary } from "@/components/reviews/review-summary"
+import { RecentlyViewed } from "@/components/recently-viewed"
 
 export default function ProductPage() {
   const params = useParams()
   const router = useRouter()
+  const { user } = useAuth()
   const [product, setProduct] = useState<Product | null>(null)
   const [loading, setLoading] = useState(true)
   const [quantity, setQuantity] = useState(1)
+  const [showReviewForm, setShowReviewForm] = useState(false)
+  const [canReview, setCanReview] = useState(false)
+  const [hasReviewed, setHasReviewed] = useState(false)
+  const [refreshReviews, setRefreshReviews] = useState(0)
   const { addItem } = useCart()
 
   useEffect(() => {
     if (params.id) {
       fetchProduct(params.id as string)
+      addToRecentlyViewed(params.id as string)
     }
   }, [params.id])
+
+  useEffect(() => {
+    if (user && product) {
+      checkReviewEligibility()
+    }
+  }, [user, product])
 
   const fetchProduct = async (id: string) => {
     try {
@@ -38,6 +56,47 @@ export default function ProductPage() {
       console.error("Error fetching product:", error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const addToRecentlyViewed = async (productId: string) => {
+    try {
+      const sessionId = sessionStorage.getItem("sessionId") || `session_${Date.now()}_${Math.random()}`
+      if (!sessionStorage.getItem("sessionId")) {
+        sessionStorage.setItem("sessionId", sessionId)
+      }
+
+      await fetch("/api/recently-viewed", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          productId,
+          userId: user?.uid,
+          sessionId,
+        }),
+      })
+    } catch (error) {
+      console.error("[v0] Error adding to recently viewed:", error)
+    }
+  }
+
+  const checkReviewEligibility = async () => {
+    if (!user || !product) return
+
+    try {
+      const response = await fetch(`/api/reviews/eligibility?productId=${product.id}`, {
+        headers: {
+          Authorization: `Bearer ${await user.getIdToken()}`,
+        },
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        setCanReview(data.canReview)
+        setHasReviewed(data.hasReviewed)
+      }
+    } catch (error) {
+      console.error("Error checking review eligibility:", error)
     }
   }
 
@@ -58,6 +117,16 @@ export default function ProductPage() {
       addItem(product, quantity)
       router.push("/cart")
     }
+  }
+
+  const handleReviewSubmitted = () => {
+    setShowReviewForm(false)
+    setRefreshReviews((prev) => prev + 1)
+    setHasReviewed(true)
+    toast({
+      title: "Review submitted",
+      description: "Thank you for your review!",
+    })
   }
 
   if (loading) {
@@ -90,7 +159,7 @@ export default function ProductPage() {
 
   return (
     <div className="container mx-auto px-4 py-8">
-      <div className="grid md:grid-cols-2 gap-8">
+      <div className="grid md:grid-cols-2 gap-8 mb-12">
         {/* Product Image */}
         <div className="relative">
           <Image
@@ -109,9 +178,7 @@ export default function ProductPage() {
         <div className="space-y-6">
           <div>
             <h1 className="text-3xl font-bold mb-2">{product.name}</h1>
-            {product.model_no && (
-              <p className="text-sm text-gray-600 mb-2">Model: {product.model_no}</p>
-            )}
+            {product.model_no && <p className="text-sm text-gray-600 mb-2">Model: {product.model_no}</p>}
             <div className="flex items-center space-x-2 mb-4">
               <div className="flex items-center">
                 {Array.from({ length: 5 }).map((_, i) => (
@@ -138,7 +205,8 @@ export default function ProductPage() {
             </div>
             {discountPercentage > 0 && (
               <p className="text-green-600 font-medium">
-                You save ₹{((product.original_price || 0) - product.price).toLocaleString("en-IN")} ({discountPercentage}% off)
+                You save ₹{((product.original_price || 0) - product.price).toLocaleString("en-IN")} (
+                {discountPercentage}% off)
               </p>
             )}
           </div>
@@ -153,20 +221,16 @@ export default function ProductPage() {
           <div className="flex items-center space-x-4">
             <label className="font-medium">Quantity:</label>
             <div className="flex items-center space-x-2">
-              <Button 
-                variant="outline" 
-                size="sm" 
+              <Button
+                variant="outline"
+                size="sm"
                 onClick={() => setQuantity(Math.max(1, quantity - 1))}
                 disabled={quantity <= 1}
               >
                 <Minus className="h-4 w-4" />
               </Button>
               <span className="px-4 py-2 border rounded min-w-[3rem] text-center">{quantity}</span>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => setQuantity(quantity + 1)}
-              >
+              <Button variant="outline" size="sm" onClick={() => setQuantity(quantity + 1)}>
                 <Plus className="h-4 w-4" />
               </Button>
             </div>
@@ -208,6 +272,50 @@ export default function ProductPage() {
           </Card>
         </div>
       </div>
+
+      <Separator className="my-8" />
+
+      <div className="mb-12">
+        <RecentlyViewed />
+      </div>
+
+      <Separator className="my-8" />
+
+      <Tabs defaultValue="reviews" className="w-full">
+        <TabsList className="grid w-full grid-cols-2 max-w-md">
+          <TabsTrigger value="reviews">Reviews</TabsTrigger>
+          <TabsTrigger value="write-review">Write Review</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="reviews" className="mt-6">
+          <div className="space-y-6">
+            <ReviewSummary productId={Number(product.id)} key={refreshReviews} />
+            <ReviewList productId={Number(product.id)} key={refreshReviews} />
+          </div>
+        </TabsContent>
+
+        <TabsContent value="write-review" className="mt-6">
+          {!user ? (
+            <Card className="p-6 text-center">
+              <p className="text-gray-600 mb-4">Please sign in to write a review</p>
+              <Button onClick={() => router.push("/auth")} className="bg-orange-600 hover:bg-orange-700">
+                Sign In
+              </Button>
+            </Card>
+          ) : hasReviewed ? (
+            <Card className="p-6 text-center">
+              <p className="text-gray-600">You have already reviewed this product</p>
+            </Card>
+          ) : !canReview ? (
+            <Card className="p-6 text-center">
+              <p className="text-gray-600 mb-2">You can only review products you have purchased and received</p>
+              <p className="text-sm text-gray-500">Your review will be marked as verified purchase</p>
+            </Card>
+          ) : (
+            <ReviewForm productId={Number(product.id)} onReviewSubmitted={handleReviewSubmitted} onCancel={() => {}} />
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

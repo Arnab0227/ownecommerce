@@ -43,13 +43,22 @@ export default function KidsCategoryPage() {
 
   const fetchProducts = async () => {
     try {
-      const response = await fetch("/api/products?category=kids")
+      const response = await fetch("/api/products?category=kids", {
+        cache: "no-store",
+      })
       if (response.ok) {
         const data = await response.json()
-        setProducts(data)
+        if (Array.isArray(data)) {
+          setProducts(data)
+          console.log("[v0] Fetched kids products:", data)
+        } else {
+          console.error("[v0] API returned non-array response:", data)
+          setProducts([])
+        }
       }
     } catch (error) {
       console.error("Error fetching products:", error)
+      setProducts([])
     } finally {
       setLoading(false)
     }

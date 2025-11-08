@@ -6,7 +6,7 @@ import { useState, useEffect, useRef } from "react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
-import { Search, X, Loader2, TrendingUp, History } from "lucide-react"
+import { Search, X, Loader2, TrendingUp } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { useDebounce } from "@/hooks/use-debounce"
 
@@ -16,7 +16,7 @@ interface SearchResult {
   description: string
   price: number
   category: string
-  imageUrl?: string
+  imageUrl?: string | null
 }
 
 interface SearchResponse {
@@ -24,6 +24,8 @@ interface SearchResponse {
   suggestedMatches: SearchResult[]
   suggestions: string[]
   trendingSearches: string[]
+  trendingProducts?: SearchResult[]
+  userRepeatingSearches?: string[]
 }
 
 export function SearchBar() {
@@ -48,7 +50,7 @@ export function SearchBar() {
   }, [])
 
   useEffect(() => {
-    if (debouncedQuery.trim()) {
+    if (debouncedQuery.trim().length >= 3) {
       performSearch(debouncedQuery)
     } else {
       loadTrendingSearches()
@@ -57,9 +59,10 @@ export function SearchBar() {
 
   const loadTrendingSearches = async () => {
     try {
-      const response = await fetch("/api/search")
+      const userId = localStorage.getItem("userId") || "anonymous"
+      const response = await fetch(`/api/search?user_id=${encodeURIComponent(userId)}`)
       if (response.ok) {
-        const data = await response.json()
+        const data: SearchResponse = await response.json()
         setResults(data)
       }
     } catch (error) {
@@ -68,12 +71,16 @@ export function SearchBar() {
   }
 
   const performSearch = async (searchQuery: string) => {
+    if (searchQuery.trim().length < 3) {
+      setLoading(false)
+      return
+    }
     setLoading(true)
     try {
       const userId = localStorage.getItem("userId") || "anonymous"
       const response = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}&user_id=${userId}`)
       if (response.ok) {
-        const data = await response.json()
+        const data: SearchResponse = await response.json()
         setResults(data)
       }
     } catch (error) {
@@ -180,16 +187,15 @@ export function SearchBar() {
       </div>
 
       {isOpen && (
-        <Card className="absolute top-full left-0 right-0 mt-1 z-50 max-h-96 overflow-y-auto">
+        <Card className="absolute top-full left-0 right-0 mt-1 z-50 max-h-[28rem] overflow-y-auto">
           <CardContent className="p-0">
             {loading ? (
               <div className="flex items-center justify-center p-4">
                 <Loader2 className="h-4 w-4 animate-spin mr-2" />
                 <span className="text-sm text-gray-600">Searching...</span>
               </div>
-            ) : query.trim() && results ? (
+            ) : query.trim().length >= 3 && results ? (
               <div className="py-2">
-                {/* Exact Matches */}
                 {results.exactMatches.length > 0 && (
                   <div>
                     <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
@@ -222,7 +228,6 @@ export function SearchBar() {
                   </div>
                 )}
 
-                {/* Suggested Matches */}
                 {results.suggestedMatches.length > 0 && (
                   <div>
                     <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
@@ -255,7 +260,6 @@ export function SearchBar() {
                   </div>
                 )}
 
-                {/* Search Suggestions */}
                 {results.suggestions.length > 0 && (
                   <div>
                     <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
@@ -278,7 +282,6 @@ export function SearchBar() {
                   </div>
                 )}
 
-                {/* No Results */}
                 {results.exactMatches.length === 0 &&
                   results.suggestedMatches.length === 0 &&
                   results.suggestions.length === 0 && (
@@ -290,28 +293,60 @@ export function SearchBar() {
               </div>
             ) : (
               <div className="py-2">
-                {userSearchHistory.length > 0 && (
-                  <div>
-                    <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center">
-                      <History className="h-3 w-3 mr-1" />
-                      Recent Searches
+                {results?.userRepeatingSearches && results.userRepeatingSearches.length > 0 && (
+                  <div className="mb-2">
+                    <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                      Your frequent searches
                     </div>
-                    {userSearchHistory.map((search) => (
+                    {results.userRepeatingSearches.map((term) => (
                       <div
-                        key={search}
+                        key={`repeat-${term}`}
                         className="px-4 py-2 cursor-pointer hover:bg-gray-50 flex items-center"
-                        onClick={() => handleSuggestionClick(search)}
+                        onClick={() => handleSuggestionClick(term)}
                       >
-                        <History className="h-4 w-4 text-gray-400 mr-3" />
-                        <span className="text-sm text-gray-700">{search}</span>
+                        <Search className="h-4 w-4 text-gray-400 mr-3" />
+                        <span className="text-sm text-gray-700">{term}</span>
                       </div>
                     ))}
                   </div>
                 )}
 
+                {results?.trendingProducts && results.trendingProducts.length > 0 && (
+                  <div className="mb-2">
+                    <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                      Trending Products
+                    </div>
+                    <div className="grid grid-cols-2 gap-2 px-3 pb-3">
+                      {results.trendingProducts.slice(0, 6).map((p) => (
+                        <button
+                          key={`trend-${p.id}`}
+                          onClick={() => handleProductClick(p.id)}
+                          className="text-left rounded-md border bg-white hover:bg-gray-50 transition p-2 flex gap-2 items-center"
+                        >
+                          {p.imageUrl && (
+                            <img
+                              src={p.imageUrl || "/placeholder.svg?height=64&width=64&query=product image"}
+                              alt={p.name}
+                              className="w-12 h-12 rounded object-cover"
+                            />
+                          )}
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-gray-900 truncate">{p.name}</p>
+                            <p className="text-xs text-gray-500 truncate">{p.category}</p>
+                            {typeof p.price === "number" && (
+                              <p className="text-sm font-semibold text-orange-600">
+                                ₹{p.price.toLocaleString("en-IN")}
+                              </p>
+                            )}
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 <div>
                   <div className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide flex items-center">
-                    <TrendingUp className="h-3 w-3 mr-1" />
                     Trending Searches
                   </div>
                   {(
@@ -327,7 +362,7 @@ export function SearchBar() {
                     ]
                   ).map((trend) => (
                     <div
-                      key={trend}
+                      key={`trend-q-${trend}`}
                       className="px-4 py-2 cursor-pointer hover:bg-gray-50 flex items-center"
                       onClick={() => handleSuggestionClick(trend)}
                     >

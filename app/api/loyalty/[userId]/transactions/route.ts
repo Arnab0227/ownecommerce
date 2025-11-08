@@ -11,12 +11,41 @@ export async function GET(request: Request, { params }: { params: { userId: stri
       return NextResponse.json({ error: "Missing userId" }, { status: 400 })
     }
 
-    const transactions = await sql`
-      SELECT * FROM loyalty_transactions 
-      WHERE user_id = ${userId}
-      ORDER BY created_at DESC
-      LIMIT 50
-    `
+    let transactions: any[] = []
+
+    try {
+      transactions = await sql`
+        SELECT * FROM loyalty_transactions 
+        WHERE user_id = ${userId}
+        ORDER BY created_at DESC
+        LIMIT 50
+      `
+    } catch (error) {
+      console.warn("[v0] loyalty_transactions table not found, computing from orders")
+
+      // Compute loyalty transactions from orders if table doesn't exist
+      const orders = await sql`
+        SELECT 
+          id,
+          total_amount,
+          status,
+          created_at
+        FROM orders 
+        WHERE user_id = ${userId} AND status = 'confirmed'
+        ORDER BY created_at DESC
+        LIMIT 20
+      `
+
+      transactions = orders.map((order: any, index: number) => ({
+        id: `computed_${order.id}`,
+        user_id: userId,
+        type: "earned",
+        points: Math.floor(Number(order.total_amount) / 100), // 1 point per ₹100
+        description: `Order purchase - Order #${order.id}`,
+        order_id: String(order.id),
+        created_at: order.created_at,
+      }))
+    }
 
     return NextResponse.json({
       success: true,
@@ -25,7 +54,7 @@ export async function GET(request: Request, { params }: { params: { userId: stri
   } catch (error) {
     console.error("Error fetching loyalty transactions:", error)
 
-    // Return mock data if database fails
+    // Return mock data if everything fails
     const mockTransactions = [
       {
         id: "1",
@@ -41,14 +70,6 @@ export async function GET(request: Request, { params }: { params: { userId: stri
         points: -500,
         description: "10% discount coupon redeemed",
         created_at: "2024-01-08T10:15:00Z",
-      },
-      {
-        id: "3",
-        type: "earned",
-        points: 200,
-        description: "Order purchase - Order #ORD002",
-        order_id: "ORD002",
-        created_at: "2024-01-05T16:45:00Z",
       },
     ]
 

@@ -21,13 +21,7 @@ export default function WomenCategoryPage() {
   const [materialFilter, setMaterialFilter] = useState<string[]>([])
   const [ratingFilter, setRatingFilter] = useState(0)
 
-  const categories = [
-    { id: "all", name: "All Items", count: 0 },
-    { id: "women-dresses", name: "Dresses", count: 0 },
-    { id: "women-tops", name: "Tops & Blouses", count: 0 },
-    { id: "women-ethnic", name: "Ethnic Wear", count: 0 },
-    { id: "women-bottoms", name: "Bottoms", count: 0 },
-  ]
+  const categories = [{ id: "all", name: "All Items", count: 0 }]
 
   useEffect(() => {
     fetchProducts()
@@ -38,32 +32,34 @@ export default function WomenCategoryPage() {
       const response = await fetch("/api/products?category=women")
       if (response.ok) {
         const data = await response.json()
-        setProducts(data)
+        console.log("[v0] Women page received products:", data)
+        if (Array.isArray(data)) {
+          setProducts(data)
+        } else {
+          console.error("[v0] API returned non-array response:", data)
+          setProducts([])
+        }
       }
     } catch (error) {
       console.error("Error fetching products:", error)
+      setProducts([])
     } finally {
       setLoading(false)
     }
   }
 
   const filteredProducts = products.filter((product) => {
-    const categoryMatch = selectedCategory === "all" || product.category === selectedCategory
-
-    // Price range filter using slider values
     const priceMatch = product.price >= priceRange[0] && product.price <= priceRange[1]
 
-    // Material filter
     let materialMatch = true
     if (materialFilter.length > 0) {
       const productText = `${product.name} ${product.description}`.toLowerCase()
       materialMatch = materialFilter.some((material) => productText.includes(material.toLowerCase()))
     }
 
-    // Rating filter
     const ratingMatch = ratingFilter === 0 || (product.rating || 0) >= ratingFilter
 
-    return categoryMatch && priceMatch && materialMatch && ratingMatch
+    return priceMatch && materialMatch && ratingMatch
   })
 
   const sortedProducts = [...filteredProducts].sort((a, b) => {
@@ -79,9 +75,9 @@ export default function WomenCategoryPage() {
       case "newest":
         return new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
       case "popularity":
-        return (a.stock || 0) - (b.stock || 0) // Lower stock = more popular
+        return (a.stock || 0) - (b.stock || 0)
       default:
-        return 0 // Keep original order for "featured"
+        return 0
     }
   })
 
@@ -105,7 +101,6 @@ export default function WomenCategoryPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Hero Section */}
       <div className="bg-gradient-to-r from-pink-600 to-purple-600 text-white py-16">
         <div className="container mx-auto px-4 text-center">
           <h1 className="text-4xl md:text-5xl font-bold mb-4">Women's Collection</h1>
@@ -117,7 +112,6 @@ export default function WomenCategoryPage() {
 
       <div className="container mx-auto px-4 py-8">
         <div className="grid lg:grid-cols-4 gap-8">
-          {/* Filters Sidebar */}
           <div className="lg:col-span-1">
             <Card className="sticky top-4">
               <CardContent className="p-6">
@@ -126,7 +120,6 @@ export default function WomenCategoryPage() {
                   <h2 className="text-lg font-semibold">Filters</h2>
                 </div>
 
-                {/* Category Filter */}
                 <div className="mb-6">
                   <h3 className="font-medium mb-3">Category</h3>
                   <div className="space-y-2">
@@ -180,7 +173,6 @@ export default function WomenCategoryPage() {
 
                 {showAdvancedFilters && (
                   <div className="space-y-6 mb-6">
-                    {/* Material Filter */}
                     {availableMaterials.length > 0 && (
                       <div>
                         <h3 className="font-medium mb-3">Material</h3>
@@ -201,7 +193,6 @@ export default function WomenCategoryPage() {
                       </div>
                     )}
 
-                    {/* Rating Filter */}
                     <div>
                       <h3 className="font-medium mb-3">Minimum Rating</h3>
                       <Select value={ratingFilter.toString()} onValueChange={(value) => setRatingFilter(Number(value))}>
@@ -237,15 +228,10 @@ export default function WomenCategoryPage() {
             </Card>
           </div>
 
-          {/* Products Grid */}
           <div className="lg:col-span-3">
             <div className="flex justify-between items-center mb-6">
               <div>
-                <h2 className="text-2xl font-bold text-gray-900">
-                  {selectedCategory === "all"
-                    ? "All Women's Items"
-                    : categories.find((c) => c.id === selectedCategory)?.name}
-                </h2>
+                <h2 className="text-2xl font-bold text-gray-900">Women's Collection</h2>
                 <p className="text-gray-600">{sortedProducts.length} products found</p>
               </div>
 
@@ -288,7 +274,7 @@ export default function WomenCategoryPage() {
                   <Filter className="h-16 w-16 mx-auto" />
                 </div>
                 <h3 className="text-xl font-semibold text-gray-900 mb-2">No products found</h3>
-                <p className="text-gray-600 mb-4">Try adjusting your filters to see more results</p>
+                <p className="text-gray-600 mb-4">Try adjusting your filters or check back soon for new arrivals</p>
                 <Button
                   onClick={() => {
                     setSelectedCategory("all")

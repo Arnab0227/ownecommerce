@@ -19,6 +19,7 @@ import {
   AlertCircle,
 } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { SalesTrendChart } from "@/components/charts/sales-trend-chart"
 
 interface AnalyticsData {
   overview: {
@@ -61,7 +62,7 @@ export default function AdminAnalyticsPage() {
   const { toast } = useToast()
   const [analyticsData, setAnalyticsData] = useState<AnalyticsData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [timeRange, setTimeRange] = useState("30d")
+  const [timeRange, setTimeRange] = useState("monthly")
   const [isRefreshing, setIsRefreshing] = useState(false)
 
   useEffect(() => {
@@ -76,53 +77,32 @@ export default function AdminAnalyticsPage() {
     try {
       setIsLoading(true)
 
-      // Mock analytics data - in real app, fetch from API
-      const mockData: AnalyticsData = {
-        overview: {
-          totalRevenue: 125000,
-          revenueChange: 12.5,
-          totalOrders: 342,
-          ordersChange: 8.2,
-          totalCustomers: 156,
-          customersChange: 15.3,
-          averageOrderValue: 2850,
-          aovChange: -2.1,
-        },
-        salesData: [
-          { date: "2024-01-01", revenue: 4200, orders: 12 },
-          { date: "2024-01-02", revenue: 3800, orders: 10 },
-          { date: "2024-01-03", revenue: 5100, orders: 15 },
-          { date: "2024-01-04", revenue: 4600, orders: 13 },
-          { date: "2024-01-05", revenue: 5800, orders: 18 },
-          { date: "2024-01-06", revenue: 6200, orders: 20 },
-          { date: "2024-01-07", revenue: 5500, orders: 16 },
-        ],
-        topProducts: [
-          { id: "1", name: "Elegant Silk Dress", sales: 45, revenue: 134550, views: 1250 },
-          { id: "2", name: "Designer Handbag", sales: 32, revenue: 63968, views: 890 },
-          { id: "3", name: "Cotton Kids T-Shirt", sales: 67, revenue: 40133, views: 2100 },
-          { id: "4", name: "Formal Blazer", sales: 18, revenue: 62982, views: 650 },
-          { id: "5", name: "Summer Dress", sales: 28, revenue: 25172, views: 780 },
-        ],
-        customerInsights: {
-          newCustomers: 89,
-          returningCustomers: 67,
-          customerRetentionRate: 42.9,
-        },
-        categoryPerformance: [
-          { category: "Women", revenue: 89500, orders: 198, growth: 15.2 },
-          { category: "Kids", revenue: 35500, orders: 144, growth: 8.7 },
-        ],
+      const token = user?.getIdToken ? await user.getIdToken() : null
+      if (!token) {
+        throw new Error("No authentication token available")
       }
 
-      // Simulate API delay
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-      setAnalyticsData(mockData)
+      const response = await fetch(`/api/analytics/dashboard?period=${timeRange}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      })
+
+      if (!response.ok) {
+        if (response.status === 403) {
+          throw new Error("Access denied. Admin privileges required.")
+        }
+        throw new Error("Failed to fetch analytics data")
+      }
+
+      const data = await response.json()
+      setAnalyticsData(data)
     } catch (error) {
       console.error("Error loading analytics:", error)
       toast({
         title: "Error",
-        description: "Failed to load analytics data",
+        description: error instanceof Error ? error.message : "Failed to load analytics data",
         variant: "destructive",
       })
     } finally {
@@ -180,28 +160,34 @@ export default function AdminAnalyticsPage() {
     <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50">
       <div className="container mx-auto px-4 py-8">
         <div className="mb-8">
-          <div className="flex justify-between items-start">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <div>
-              <h1 className="text-3xl font-bold text-amber-800 mb-2">Analytics Dashboard</h1>
+              <h1 className="text-2xl md:text-3xl font-bold text-amber-800 mb-2">Analytics Dashboard</h1>
               <p className="text-gray-600">Track your store's performance and insights</p>
             </div>
-            <div className="flex gap-2">
+            <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
               <Select value={timeRange} onValueChange={setTimeRange}>
-                <SelectTrigger className="w-32">
+                <SelectTrigger className="w-full sm:w-32">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="7d">Last 7 days</SelectItem>
-                  <SelectItem value="30d">Last 30 days</SelectItem>
-                  <SelectItem value="90d">Last 90 days</SelectItem>
-                  <SelectItem value="1y">Last year</SelectItem>
+                  <SelectItem value="daily">Daily</SelectItem>
+                  <SelectItem value="weekly">Weekly</SelectItem>
+                  <SelectItem value="monthly">Monthly</SelectItem>
+                  <SelectItem value="quarterly">Quarterly</SelectItem>
+                  <SelectItem value="yearly">Yearly</SelectItem>
                 </SelectContent>
               </Select>
-              <Button variant="outline" onClick={handleRefresh} disabled={isRefreshing}>
+              <Button
+                variant="outline"
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                className="w-full sm:w-auto bg-transparent"
+              >
                 <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`} />
                 Refresh
               </Button>
-              <Button variant="outline" onClick={exportData}>
+              <Button variant="outline" onClick={exportData} className="w-full sm:w-auto bg-transparent">
                 <Download className="h-4 w-4 mr-2" />
                 Export
               </Button>
@@ -210,14 +196,16 @@ export default function AdminAnalyticsPage() {
         </div>
 
         {/* Overview Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mb-8">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Revenue</CardTitle>
+              <CardTitle className="text-xs md:text-sm font-medium">Total Revenue</CardTitle>
               <DollarSign className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">₹{analyticsData.overview.totalRevenue.toLocaleString("en-IN")}</div>
+              <div className="text-lg md:text-2xl font-bold">
+                ₹{analyticsData.overview.totalRevenue.toLocaleString("en-IN")}
+              </div>
               <div className="flex items-center text-xs text-muted-foreground">
                 {analyticsData.overview.revenueChange > 0 ? (
                   <TrendingUp className="h-3 w-3 mr-1 text-green-500" />
@@ -234,11 +222,11 @@ export default function AdminAnalyticsPage() {
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Orders</CardTitle>
+              <CardTitle className="text-xs md:text-sm font-medium">Total Orders</CardTitle>
               <ShoppingCart className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{analyticsData.overview.totalOrders}</div>
+              <div className="text-lg md:text-2xl font-bold">{analyticsData.overview.totalOrders}</div>
               <div className="flex items-center text-xs text-muted-foreground">
                 {analyticsData.overview.ordersChange > 0 ? (
                   <TrendingUp className="h-3 w-3 mr-1 text-green-500" />
@@ -255,11 +243,11 @@ export default function AdminAnalyticsPage() {
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Total Customers</CardTitle>
+              <CardTitle className="text-xs md:text-sm font-medium">Total Customers</CardTitle>
               <Users className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{analyticsData.overview.totalCustomers}</div>
+              <div className="text-lg md:text-2xl font-bold">{analyticsData.overview.totalCustomers}</div>
               <div className="flex items-center text-xs text-muted-foreground">
                 {analyticsData.overview.customersChange > 0 ? (
                   <TrendingUp className="h-3 w-3 mr-1 text-green-500" />
@@ -276,11 +264,11 @@ export default function AdminAnalyticsPage() {
 
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Avg Order Value</CardTitle>
+              <CardTitle className="text-xs md:text-sm font-medium">Avg Order Value</CardTitle>
               <BarChart3 className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
+              <div className="text-lg md:text-2xl font-bold">
                 ₹{analyticsData.overview.averageOrderValue.toLocaleString("en-IN")}
               </div>
               <div className="flex items-center text-xs text-muted-foreground">
@@ -298,36 +286,40 @@ export default function AdminAnalyticsPage() {
           </Card>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8 mb-8">
           {/* Top Products */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+              <CardTitle className="flex items-center gap-2 text-lg md:text-xl">
                 <Package className="h-5 w-5" />
                 Top Performing Products
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="space-y-4">
-                {analyticsData.topProducts.map((product, index) => (
-                  <div key={product.id} className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-amber-100 rounded-full flex items-center justify-center text-sm font-medium text-amber-800">
-                        {index + 1}
+                {analyticsData.topProducts.length > 0 ? (
+                  analyticsData.topProducts.map((product, index) => (
+                    <div key={product.id} className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-6 h-6 md:w-8 md:h-8 bg-amber-100 rounded-full flex items-center justify-center text-xs md:text-sm font-medium text-amber-800">
+                          {index + 1}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-medium text-sm md:text-base line-clamp-1">{product.name}</p>
+                          <p className="text-xs md:text-sm text-gray-600">
+                            {product.sales} sales • {product.views} views
+                          </p>
+                        </div>
                       </div>
-                      <div>
-                        <p className="font-medium">{product.name}</p>
-                        <p className="text-sm text-gray-600">
-                          {product.sales} sales • {product.views} views
-                        </p>
+                      <div className="text-right">
+                        <p className="font-medium text-sm md:text-base">₹{product.revenue.toLocaleString("en-IN")}</p>
+                        <p className="text-xs md:text-sm text-gray-600">Revenue</p>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <p className="font-medium">₹{product.revenue.toLocaleString("en-IN")}</p>
-                      <p className="text-sm text-gray-600">Revenue</p>
-                    </div>
-                  </div>
-                ))}
+                  ))
+                ) : (
+                  <p className="text-gray-500 text-center py-4">No product data available</p>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -335,7 +327,7 @@ export default function AdminAnalyticsPage() {
           {/* Customer Insights */}
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+              <CardTitle className="flex items-center gap-2 text-lg md:text-xl">
                 <Users className="h-5 w-5" />
                 Customer Insights
               </CardTitle>
@@ -344,28 +336,28 @@ export default function AdminAnalyticsPage() {
               <div className="space-y-6">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="text-center">
-                    <div className="text-2xl font-bold text-green-600">
+                    <div className="text-xl md:text-2xl font-bold text-green-600">
                       {analyticsData.customerInsights.newCustomers}
                     </div>
-                    <div className="text-sm text-gray-600">New Customers</div>
+                    <div className="text-xs md:text-sm text-gray-600">New Customers</div>
                   </div>
                   <div className="text-center">
-                    <div className="text-2xl font-bold text-blue-600">
+                    <div className="text-xl md:text-2xl font-bold text-blue-600">
                       {analyticsData.customerInsights.returningCustomers}
                     </div>
-                    <div className="text-sm text-gray-600">Returning Customers</div>
+                    <div className="text-xs md:text-sm text-gray-600">Returning Customers</div>
                   </div>
                 </div>
 
                 <div className="text-center">
-                  <div className="text-3xl font-bold text-purple-600">
+                  <div className="text-2xl md:text-3xl font-bold text-purple-600">
                     {analyticsData.customerInsights.customerRetentionRate}%
                   </div>
-                  <div className="text-sm text-gray-600">Customer Retention Rate</div>
+                  <div className="text-xs md:text-sm text-gray-600">Customer Retention Rate</div>
                 </div>
 
                 <div className="space-y-2">
-                  <div className="flex justify-between text-sm">
+                  <div className="flex justify-between text-xs md:text-sm">
                     <span>New vs Returning</span>
                     <span>
                       {(
@@ -394,60 +386,67 @@ export default function AdminAnalyticsPage() {
         {/* Category Performance */}
         <Card className="mb-8">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2 text-lg md:text-xl">
               <BarChart3 className="h-5 w-5" />
               Category Performance
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {analyticsData.categoryPerformance.map((category) => (
-                <div key={category.category} className="border rounded-lg p-4">
-                  <div className="flex justify-between items-start mb-3">
-                    <h3 className="font-semibold text-lg">{category.category}</h3>
-                    <div className="flex items-center text-sm">
-                      {category.growth > 0 ? (
-                        <TrendingUp className="h-4 w-4 mr-1 text-green-500" />
-                      ) : (
-                        <TrendingDown className="h-4 w-4 mr-1 text-red-500" />
-                      )}
-                      <span className={category.growth > 0 ? "text-green-500" : "text-red-500"}>
-                        {Math.abs(category.growth)}%
-                      </span>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+              {analyticsData.categoryPerformance.length > 0 ? (
+                analyticsData.categoryPerformance.map((category) => (
+                  <div key={category.category} className="border rounded-lg p-4">
+                    <div className="flex justify-between items-start mb-3">
+                      <h3 className="font-semibold text-base md:text-lg">{category.category}</h3>
+                      <div className="flex items-center text-xs md:text-sm">
+                        {category.growth > 0 ? (
+                          <TrendingUp className="h-4 w-4 mr-1 text-green-500" />
+                        ) : (
+                          <TrendingDown className="h-4 w-4 mr-1 text-red-500" />
+                        )}
+                        <span className={category.growth > 0 ? "text-green-500" : "text-red-500"}>
+                          {Math.abs(category.growth)}%
+                        </span>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <p className="text-xl md:text-2xl font-bold">₹{category.revenue.toLocaleString("en-IN")}</p>
+                        <p className="text-xs md:text-sm text-gray-600">Revenue</p>
+                      </div>
+                      <div>
+                        <p className="text-xl md:text-2xl font-bold">{category.orders}</p>
+                        <p className="text-xs md:text-sm text-gray-600">Orders</p>
+                      </div>
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <p className="text-2xl font-bold">₹{category.revenue.toLocaleString("en-IN")}</p>
-                      <p className="text-sm text-gray-600">Revenue</p>
-                    </div>
-                    <div>
-                      <p className="text-2xl font-bold">{category.orders}</p>
-                      <p className="text-sm text-gray-600">Orders</p>
-                    </div>
-                  </div>
-                </div>
-              ))}
+                ))
+              ) : (
+                <p className="text-gray-500 text-center py-4 col-span-2">No category data available</p>
+              )}
             </div>
           </CardContent>
         </Card>
 
-        {/* Sales Chart Placeholder */}
+        {/* Sales Chart */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
+            <CardTitle className="flex items-center gap-2 text-lg md:text-xl">
               <BarChart3 className="h-5 w-5" />
               Sales Trend
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="h-64 flex items-center justify-center bg-gray-50 rounded-lg">
-              <div className="text-center">
-                <BarChart3 className="h-12 w-12 text-gray-400 mx-auto mb-2" />
-                <p className="text-gray-600">Sales chart visualization would go here</p>
-                <p className="text-sm text-gray-500">Integration with charting library needed</p>
+            {analyticsData.salesData?.length ? (
+              <SalesTrendChart data={analyticsData.salesData} />
+            ) : (
+              <div className="h-48 md:h-64 flex items-center justify-center bg-gray-50 rounded-lg">
+                <div className="text-center">
+                  <BarChart3 className="h-8 w-8 md:h-12 md:w-12 text-gray-400 mx-auto mb-2" />
+                  <p className="text-gray-600 text-sm md:text-base">No sales data available</p>
+                </div>
               </div>
-            </div>
+            )}
           </CardContent>
         </Card>
       </div>

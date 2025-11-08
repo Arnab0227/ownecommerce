@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Sheet, SheetContent, SheetTrigger, SheetTitle } from "@/components/ui/sheet"
 import dynamic from "next/dynamic"
-import { Search, ShoppingCart, User, Menu, Heart, Package, Settings, LogOut, Crown, Gift } from "lucide-react"
+import { Search, ShoppingCart, User, Menu, Heart, Package, Settings, LogOut, Crown } from "lucide-react"
 import { useAuth } from "@/hooks/use-firebase-auth"
 import { useCart } from "@/hooks/use-cart"
 import { VisuallyHidden } from "@radix-ui/react-visually-hidden"
@@ -49,7 +49,7 @@ export function Navbar() {
 
     window.addEventListener("cartUpdated", handleCartUpdate)
     window.addEventListener("storage", (e) => {
-      if (e.key === "golden-threads-cart") {
+      if (e.key === "suktara-cart") {
         updateCartCount()
       }
     })
@@ -77,7 +77,7 @@ export function Navbar() {
             {/* Logo */}
             <Link href="/" className="flex items-center space-x-2">
               <div className="h-8 w-8 rounded-full bg-gradient-to-r from-amber-400 to-orange-500" />
-              <span className="text-xl font-bold text-amber-800">Golden Threads</span>
+              <span className="text-xl font-bold text-amber-800">Suktara</span>
             </Link>
 
             {/* Desktop Navigation */}
@@ -93,12 +93,6 @@ export function Navbar() {
                 className="text-sm font-medium text-gray-700 hover:text-amber-600 transition-colors"
               >
                 Kids
-              </Link>
-              <Link
-                href="/categories/men"
-                className="text-sm font-medium text-gray-700 hover:text-amber-600 transition-colors"
-              >
-                Men
               </Link>
             </div>
 
@@ -154,12 +148,6 @@ export function Navbar() {
                       <Link href="/loyalty" className="flex items-center">
                         <Crown className="mr-2 h-4 w-4" />
                         Loyalty Points
-                      </Link>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem asChild>
-                      <Link href="/gift-cards" className="flex items-center">
-                        <Gift className="mr-2 h-4 w-4" />
-                        Gift Cards
                       </Link>
                     </DropdownMenuItem>
                     <DropdownMenuItem asChild>
@@ -226,12 +214,6 @@ export function Navbar() {
                         className="block px-3 py-2 text-sm font-medium text-gray-700 hover:text-amber-600 hover:bg-amber-50 rounded-md transition-colors"
                       >
                         Kids Collection
-                      </Link>
-                      <Link
-                        href="/categories/men"
-                        className="block px-3 py-2 text-sm font-medium text-gray-700 hover:text-amber-600 hover:bg-amber-50 rounded-md transition-colors"
-                      >
-                        Men's Collection
                       </Link>
                     </div>
 

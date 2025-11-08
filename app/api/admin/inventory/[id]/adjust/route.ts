@@ -5,79 +5,74 @@ const sql = neon(process.env.DATABASE_URL!)
 
 export async function POST(request: Request, { params }: { params: { id: string } }) {
   try {
-    const { quantity, reason, type } = await request.json()
+    const { quantity, reason, type = "adjustment" } = await request.json()
     const productId = params.id
 
-    // Get current stock
-    const product = await sql`
-      SELECT stock, name FROM products WHERE id = ${productId}
-    `
+    const product =
+      await sql`SELECT COALESCE(stock_quantity, 0) AS stock_quantity FROM products WHERE id = ${productId}`
+    if (product.length === 0) return NextResponse.json({ error: "Product not found" }, { status: 404 })
 
-    if (product.length === 0) {
-      return NextResponse.json({ error: "Product not found" }, { status: 404 })
-    }
+    const current = Number(product[0].stock_quantity)
+    let next = current
+    if (type === "in") next = current + Number(quantity || 0)
+    else if (type === "out") next = Math.max(0, current - Number(quantity || 0))
+    else next = Number(quantity || 0)
 
-    const currentStock = product[0].stock
-    let newStock = currentStock
+    await sql`UPDATE products SET stock_quantity = ${next}, updated_at = NOW() WHERE id = ${productId}`
 
-    // Calculate new stock based on adjustment type
-    if (type === "in") {
-      newStock = currentStock + quantity
-    } else if (type === "out") {
-      newStock = Math.max(0, currentStock - quantity)
-    } else if (type === "adjustment") {
-      newStock = quantity // Direct adjustment to specific quantity
-    }
-
-    // Update product stock
     await sql`
-      UPDATE products 
-      SET stock = ${newStock}
-      WHERE id = ${productId}
+      INSERT INTO stock_movements (product_id, type, movement_type, quantity, reason, date, created_at, user_id, created_by)
+      VALUES (${productId}, ${type}, ${type}, ${Number(quantity || 0)}, ${reason || "manual adjustment"}, NOW(), NOW(), 'admin', 'admin')
     `
 
-    // Record stock movement
-    await sql`
-      INSERT INTO stock_movements (product_id, product_name, type, quantity, reason, date, user_id)
-      VALUES (${productId}, ${product[0].name}, ${type}, ${quantity}, ${reason}, NOW(), 'admin')
-    `
-
-    // Return updated inventory item
-    const updatedItem = await sql`
+    const [p] = await sql`
       SELECT 
         p.id,
         p.name,
         p.sku,
         p.category,
-        p.stock as current_stock,
-        p.price,
-        COALESCE(i.min_stock_level, 10) as min_stock_level,
-        COALESCE(i.max_stock_level, 100) as max_stock_level,
-        COALESCE(i.cost_price, p.price * 0.6) as cost_price,
-        COALESCE(i.supplier, 'Default Supplier') as supplier,
-        COALESCE(i.last_restocked, p.created_at) as last_restocked,
-        COALESCE(reserved.reserved_stock, 0) as reserved_stock,
-        (p.stock - COALESCE(reserved.reserved_stock, 0)) as available_stock,
-        CASE 
-          WHEN p.stock = 0 THEN 'out_of_stock'
-          WHEN p.stock <= COALESCE(i.min_stock_level, 10) THEN 'low_stock'
-          ELSE 'in_stock'
-        END as status
+        COALESCE(p.stock_quantity, 0) AS current_stock,
+        p.price AS selling_price,
+        10 AS min_stock_level,
+        100 AS max_stock_level,
+        COALESCE(p.price * 0.6, p.price) AS cost_price,
+        'Default Supplier' AS supplier,
+        p.updated_at AS last_restocked,
+        COALESCE(res.reserved_stock, 0) AS reserved_stock
       FROM products p
-      LEFT JOIN inventory i ON p.id = i.product_id
       LEFT JOIN (
-        SELECT 
-          product_id,
-          SUM(quantity) as reserved_stock
+        SELECT oi.product_id, SUM(oi.quantity) AS reserved_stock
         FROM order_items oi
         JOIN orders o ON oi.order_id = o.id
-        WHERE o.status IN ('pending', 'processing')
-        GROUP BY product_id
-      ) reserved ON p.id = reserved.product_id
+        WHERE o.status IN ('pending','processing')
+        GROUP BY oi.product_id
+      ) res ON res.product_id = p.id
       WHERE p.id = ${productId}
     `
 
-    return NextResponse.json(updatedItem[0])
+    const available = Number(p.current_stock) - Number(p.reserved_stock || 0)
+    const status =
+      Number(p.current_stock) === 0
+        ? "out_of_stock"
+        : Number(p.current_stock) <= Number(p.min_stock_level)
+          ? "low_stock"
+          : "in_stock"
+
+    return NextResponse.json({
+      id: p.id,
+      name: p.name,
+      sku: p.sku,
+      category: p.category,
+      current_stock: Number(p.current_stock),
+      reserved_stock: Number(p.reserved_stock || 0),
+      available_stock: Math.max(0, available),
+      reorder_level: Number(p.min_stock_level),
+      cost_price: Number(p.cost_price),
+      selling_price: Number(p.selling_price),
+      supplier: p.supplier,
+      last_restocked: p.last_restocked,
+      status,
+    })
   } catch (error) {
     console.error("Error adjusting stock:", error)
     return NextResponse.json({ error: "Failed to adjust stock" }, { status: 500 })

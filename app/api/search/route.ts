@@ -231,19 +231,121 @@ async function getTrendingSearches(): Promise<string[]> {
   }
 }
 
+async function getTrendingProducts(): Promise<
+  Array<{
+    id: string
+    name: string
+    description?: string | null
+    price?: number | null
+    category?: string | null
+    image_url?: string | null
+  }>
+> {
+  try {
+    // Prefer orders + views; fallback to created_at/rating if tables missing
+    const rows = await sql /* sql */`
+      WITH oi AS (
+        SELECT product_id, COUNT(*) AS orders, SUM(quantity) AS qty
+        FROM order_items
+        GROUP BY product_id
+      ),
+      pv AS (
+        SELECT product_id, COUNT(*) AS views
+        FROM product_views
+        GROUP BY product_id
+      )
+      SELECT
+        p.id,
+        p.name,
+        p.description,
+        p.price,
+        p.category,
+        p.image_url,
+        COALESCE(oi.orders, 0) AS orders,
+        COALESCE(pv.views, 0)  AS views
+      FROM products p
+      LEFT JOIN oi ON oi.product_id = p.id
+      LEFT JOIN pv ON pv.product_id = p.id
+      ORDER BY orders DESC, views DESC, p.created_at DESC
+      LIMIT 8
+    `
+    // Map rows to the precise return shape to satisfy TypeScript
+    return rows.map((r: any) => ({
+      id: String(r.id),
+      name: r.name,
+      description: r.description ?? null,
+      price: r.price ?? null,
+      category: r.category ?? null,
+      image_url: r.image_url ?? null,
+    }))
+  } catch (err) {
+    try {
+      const basic = await sql /* sql */`
+        SELECT id, name, description, price, category, image_url
+        FROM products
+        ORDER BY created_at DESC
+        LIMIT 8
+      `
+      return basic.map((r: any) => ({
+        id: String(r.id),
+        name: r.name,
+        description: r.description ?? null,
+        price: r.price ?? null,
+        category: r.category ?? null,
+        image_url: r.image_url ?? null,
+      }))
+    } catch {
+      return []
+    }
+  }
+}
+
+async function getUserRepeatingSearches(userId?: string | null): Promise<string[]> {
+  if (!userId) return []
+  try {
+    const rows = await sql /* sql */`
+      SELECT query, COUNT(*) AS cnt
+      FROM recent_searches
+      WHERE user_id = ${userId}
+      GROUP BY query
+      HAVING COUNT(*) > 1
+      ORDER BY cnt DESC
+      LIMIT 8
+    `
+    return rows.map((r: any) => r.query)
+  } catch (err) {
+    console.log("[v0] repeating searches query failed:", err)
+    return []
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
     const query = searchParams.get("q")?.trim()
-    const userId = searchParams.get("user_id") // This can be string | null
+    const userId = searchParams.get("user_id")
 
     if (!query) {
       const trendingSearches = await getTrendingSearches()
+      const trendingProducts = await getTrendingProducts()
+      const userRepeatingSearches = await getUserRepeatingSearches(userId)
+
+      const normalizedTrendingProducts = trendingProducts.map((p: any) => ({
+        id: String(p.id),
+        name: p.name,
+        description: p.description ?? "",
+        price: p.price ?? 0,
+        category: p.category ?? "",
+        imageUrl: p.image_url ?? null,
+      }))
+
       return NextResponse.json({
         exactMatches: [],
         suggestedMatches: [],
         suggestions: [],
         trendingSearches,
+        trendingProducts: normalizedTrendingProducts,
+        userRepeatingSearches,
       })
     }
 
@@ -357,7 +459,6 @@ export async function GET(request: NextRequest) {
     })
 
     const userSearches = await getUserPreviousSearches(userId) // Now properly typed
-
     const suggestions = generateSearchSuggestions(query, userSearches)
 
     // Update analytics with results count
@@ -374,11 +475,27 @@ export async function GET(request: NextRequest) {
       console.log("Analytics update failed:", analyticsError)
     }
 
+    const normalize = (p: any) => ({
+      id: String(p.id),
+      name: p.name,
+      description: p.description ?? "",
+      price: p.price ?? 0,
+      category: p.category ?? "",
+      imageUrl: p.image_url ?? p.imageUrl ?? null,
+    })
+
+    const normalizedExact = exactMatches.slice(0, 8).map(normalize)
+    const normalizedSuggested = suggestedMatches.slice(0, 8).map(normalize)
+    const trendingProducts = (await getTrendingProducts()).map(normalize)
+    const userRepeatingSearches = await getUserRepeatingSearches(userId)
+
     return NextResponse.json({
-      exactMatches: exactMatches.slice(0, 8),
-      suggestedMatches: suggestedMatches.slice(0, 8),
+      exactMatches: normalizedExact,
+      suggestedMatches: normalizedSuggested,
       suggestions,
       trendingSearches: await getTrendingSearches(),
+      trendingProducts,
+      userRepeatingSearches,
     })
   } catch (error) {
     console.error("Search error:", error)
@@ -389,6 +506,8 @@ export async function GET(request: NextRequest) {
         suggestedMatches: [],
         suggestions: [],
         trendingSearches: [],
+        trendingProducts: [],
+        userRepeatingSearches: [],
       },
       { status: 500 },
     )

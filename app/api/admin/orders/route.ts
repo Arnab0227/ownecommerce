@@ -112,6 +112,7 @@ export async function GET(request: NextRequest) {
 
     const ordersWithItems = orders.map((order: any) => ({
       id: order.id.toString(),
+      order_number: order.order_number, // Added order_number field to match user orders API
       user_id: order.user_id,
       user_email: order.user_email || null,
       total_amount: Number(order.total_amount),
@@ -155,7 +156,6 @@ export async function PUT(request: NextRequest) {
       WHERE id = ${orderId}
     `
 
-    // Send notification to customer about status change
     try {
       const order = await sql`
         SELECT o.*, u.email, u.name 
@@ -164,26 +164,26 @@ export async function PUT(request: NextRequest) {
         WHERE o.id = ${orderId}
       `
 
-      if (order.length > 0) {
-        // Send email notification
+      if (order.length > 0 && order[0].email) {
+        // Send email notification with proper type
         await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/notifications/email`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            to: order[0].email,
-            subject: `Order ${order[0].order_number} Status Update`,
-            template: "order-status-update",
+            type: "status_update",
             data: {
-              customerName: order[0].name,
-              orderNumber: order[0].order_number,
+              userEmail: order[0].email,
               status: status,
+              totalAmount: order[0].total_amount,
               trackingNumber: order[0].tracking_number,
             },
           }),
         })
+
+        console.log(`[v0] Status update email sent for order ${orderId} with status: ${status}`)
       }
     } catch (notificationError) {
-      console.log("Notification failed:", notificationError)
+      console.error("[v0] Notification failed:", notificationError)
     }
 
     return NextResponse.json({ success: true, message: "Order status updated" })

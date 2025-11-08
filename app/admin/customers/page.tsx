@@ -11,6 +11,8 @@ import { Users, Search, Filter, Download, Eye, Ban, CheckCircle, Loader2, AlertC
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Line, LineChart, CartesianGrid, XAxis, YAxis, ResponsiveContainer } from "recharts"
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 
 interface Customer {
   id: string
@@ -23,12 +25,55 @@ interface Customer {
   total_spent: number
   last_order_date: string
   addresses: Array<{
-    type: string
-    address: string
+    type?: string
+    street?: string
     city: string
     state: string
     pincode: string
+    is_default?: boolean
+    address?: string
   }>
+  purchases?: Array<{
+    order_id: string
+    product_id: string
+    product_name: string
+    quantity: number
+    price: number
+    total: number
+    status: string
+    date: string
+  }>
+  orders?: Array<{
+    id: string
+    order_number: string
+    total_amount: number
+    delivery_fee: number
+    status: string
+    payment_method: string
+    payment_status: string
+    tracking_number?: string
+    created_at: string
+    updated_at: string
+    shipping_address?: any
+    billing_address?: any
+  }>
+  analytics?: {
+    total_product_views: number
+    unique_products_viewed: number
+    avg_session_duration: number
+    last_activity_date?: string
+    engagement_score: number
+    most_viewed_product?: string | null
+    viewed_categories: string[]
+    active_days: number
+    avg_view_duration: number
+    repeated_products: Array<{ product_id: number; product_name: string; views: number }>
+    frequency_category: string
+    avg_days_between_orders: number
+    days_since_last_order: number
+    is_at_risk: boolean
+    order_patterns: { preferred_days: number[]; preferred_months: number[] }
+  }
 }
 
 export default function AdminCustomersPage() {
@@ -51,76 +96,33 @@ export default function AdminCustomersPage() {
   const loadCustomers = async () => {
     try {
       setIsLoading(true)
-      const response = await fetch("/api/admin/customers")
+      console.log("[v0] Loading customers from API...")
+
+      const token = await user?.getIdToken()
+      const response = await fetch("/api/admin/customers", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+      })
 
       if (response.ok) {
         const data = await response.json()
+        console.log("[v0] Customers loaded:", data.customers?.length || 0)
         setCustomers(data.customers || [])
       } else {
-        throw new Error("Failed to fetch customers")
+        const errorText = await response.text()
+        console.error("[v0] API Error:", errorText)
+        throw new Error(`Failed to fetch customers: ${response.status}`)
       }
     } catch (error) {
-      console.error("Error loading customers:", error)
-      // Mock data for demo
-      const mockCustomers: Customer[] = [
-        {
-          id: "1",
-          email: "john.doe@example.com",
-          display_name: "John Doe",
-          phone: "+91 9876543210",
-          created_at: "2024-01-15T10:30:00Z",
-          status: "active",
-          total_orders: 5,
-          total_spent: 12500,
-          last_order_date: "2024-01-10T14:20:00Z",
-          addresses: [
-            {
-              type: "home",
-              address: "123 Main Street, Apartment 4B",
-              city: "Mumbai",
-              state: "Maharashtra",
-              pincode: "400001",
-            },
-          ],
-        },
-        {
-          id: "2",
-          email: "jane.smith@example.com",
-          display_name: "Jane Smith",
-          phone: "+91 9876543211",
-          created_at: "2024-01-12T09:15:00Z",
-          status: "active",
-          total_orders: 3,
-          total_spent: 8750,
-          last_order_date: "2024-01-08T16:45:00Z",
-          addresses: [
-            {
-              type: "home",
-              address: "456 Oak Avenue",
-              city: "Delhi",
-              state: "Delhi",
-              pincode: "110001",
-            },
-          ],
-        },
-        {
-          id: "3",
-          email: "mike.wilson@example.com",
-          display_name: "Mike Wilson",
-          phone: "+91 9876543212",
-          created_at: "2024-01-08T11:20:00Z",
-          status: "inactive",
-          total_orders: 1,
-          total_spent: 2500,
-          last_order_date: "2024-01-05T12:30:00Z",
-          addresses: [],
-        },
-      ]
-      setCustomers(mockCustomers)
+      console.error("[v0] Error loading customers:", error)
       toast({
-        title: "Demo Mode",
-        description: "Showing sample customer data",
+        title: "Error",
+        description: "Failed to load customer data. Please check the console for details.",
+        variant: "destructive",
       })
+      setCustomers([])
     } finally {
       setIsLoading(false)
     }
@@ -128,9 +130,11 @@ export default function AdminCustomersPage() {
 
   const updateCustomerStatus = async (customerId: string, newStatus: string) => {
     try {
+      const token = await user?.getIdToken()
       const response = await fetch(`/api/admin/customers/${customerId}`, {
         method: "PATCH",
         headers: {
+          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ status: newStatus }),
@@ -164,7 +168,7 @@ export default function AdminCustomersPage() {
   const exportCustomers = () => {
     const csvContent = [
       ["Email", "Name", "Phone", "Status", "Total Orders", "Total Spent", "Created At"].join(","),
-      ...filteredCustomers.map((customer) =>
+      ...customers.map((customer) =>
         [
           customer.email,
           customer.display_name,
@@ -184,6 +188,10 @@ export default function AdminCustomersPage() {
     a.download = "customers.csv"
     a.click()
     window.URL.revokeObjectURL(url)
+  }
+
+  const formatDateIndia = (date: string) => {
+    return new Date(date).toLocaleDateString("en-IN")
   }
 
   const filteredCustomers = customers.filter((customer) => {
@@ -438,6 +446,189 @@ export default function AdminCustomersPage() {
                                     <p className="text-gray-500">No addresses saved</p>
                                   )}
                                 </div>
+
+                                <div>
+                                  <label className="text-sm font-medium">Recent Purchases (Last 30 days)</label>
+                                  {selectedCustomer.purchases && selectedCustomer.purchases.length > 0 ? (
+                                    <div className="mt-2 border rounded">
+                                      <div className="grid grid-cols-5 gap-2 text-xs font-medium px-3 py-2 bg-gray-50">
+                                        <span>Order ID</span>
+                                        <span>Product</span>
+                                        <span>Quantity</span>
+                                        <span>Amount</span>
+                                        <span>Date</span>
+                                      </div>
+                                      <div className="max-h-60 overflow-auto divide-y">
+                                        {selectedCustomer.purchases.map((p) => (
+                                          <div
+                                            key={`${p.order_id}-${p.product_id}`}
+                                            className="grid grid-cols-5 gap-2 px-3 py-2 text-sm"
+                                          >
+                                            <span className="font-mono text-xs">{p.order_id}</span>
+                                            <span>{p.product_name}</span>
+                                            <span>{p.quantity}</span>
+                                            <span>₹{p.total.toLocaleString("en-IN")}</span>
+                                            <span>{formatDateIndia(p.date)}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <p className="text-gray-500 mt-2">No recent purchases</p>
+                                  )}
+                                </div>
+
+                                <div>
+                                  <label className="text-sm font-medium">
+                                    Order History ({selectedCustomer.orders?.length || 0} orders)
+                                  </label>
+                                  {selectedCustomer.orders && selectedCustomer.orders.length > 0 ? (
+                                    <div className="mt-2 border rounded">
+                                      <div className="grid grid-cols-6 gap-2 text-xs font-medium px-3 py-2 bg-gray-50">
+                                        <span>Order #</span>
+                                        <span>Amount</span>
+                                        <span>Status</span>
+                                        <span>Payment</span>
+                                        <span>Date</span>
+                                        <span>Tracking</span>
+                                      </div>
+                                      <div className="max-h-80 overflow-auto divide-y">
+                                        {selectedCustomer.orders.map((order) => (
+                                          <div key={order.id} className="grid grid-cols-6 gap-2 px-3 py-2 text-sm">
+                                            <span className="font-mono text-xs">{order.order_number || order.id}</span>
+                                            <span>₹{order.total_amount.toLocaleString("en-IN")}</span>
+                                            <span>
+                                              <Badge
+                                                variant={
+                                                  order.status === "delivered"
+                                                    ? "default"
+                                                    : order.status === "cancelled"
+                                                      ? "destructive"
+                                                      : "secondary"
+                                                }
+                                              >
+                                                {order.status}
+                                              </Badge>
+                                            </span>
+                                            <span className="capitalize">{order.payment_method}</span>
+                                            <span>{formatDateIndia(order.created_at)}</span>
+                                            <span className="text-xs">{order.tracking_number || "N/A"}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <p className="text-gray-500 mt-2">No orders found</p>
+                                  )}
+                                </div>
+
+                                <div>
+                                  <label className="text-sm font-medium">Behavior Analytics</label>
+                                  {selectedCustomer.analytics ? (
+                                    <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-3">
+                                      <div className="p-3 bg-gray-50 rounded">
+                                        <p className="text-xs text-gray-600">Total Product Views</p>
+                                        <p className="text-lg font-semibold">
+                                          {selectedCustomer.analytics.total_product_views}
+                                        </p>
+                                      </div>
+                                      <div className="p-3 bg-gray-50 rounded">
+                                        <p className="text-xs text-gray-600">Unique Products Viewed</p>
+                                        <p className="text-lg font-semibold">
+                                          {selectedCustomer.analytics.unique_products_viewed}
+                                        </p>
+                                      </div>
+                                      <div className="p-3 bg-gray-50 rounded">
+                                        <p className="text-xs text-gray-600">Engagement Score</p>
+                                        <p className="text-lg font-semibold">
+                                          {selectedCustomer.analytics.engagement_score}
+                                        </p>
+                                      </div>
+                                      <div className="p-3 bg-gray-50 rounded">
+                                        <p className="text-xs text-gray-600">Avg View Duration</p>
+                                        <p className="text-lg font-semibold">
+                                          {Math.round(selectedCustomer.analytics.avg_view_duration)}s
+                                        </p>
+                                      </div>
+                                      <div className="p-3 bg-gray-50 rounded md:col-span-2">
+                                        <p className="text-xs text-gray-600">Most Viewed Product</p>
+                                        <p className="text-sm font-medium">
+                                          {selectedCustomer.analytics.most_viewed_product || "—"}
+                                        </p>
+                                      </div>
+                                      <div className="p-3 bg-gray-50 rounded md:col-span-2">
+                                        <p className="text-xs text-gray-600">Repeatedly Viewed Products</p>
+                                        {selectedCustomer.analytics.repeated_products?.length ? (
+                                          <ul className="mt-1 text-sm list-disc list-inside">
+                                            {selectedCustomer.analytics.repeated_products.map((rp, i) => (
+                                              <li key={`rp-${selectedCustomer.id}-${rp.product_id}-${i}`}>
+                                                {rp.product_name} — {rp.views} views
+                                              </li>
+                                            ))}
+                                          </ul>
+                                        ) : (
+                                          <p className="text-sm text-gray-600 mt-1">No repeats detected</p>
+                                        )}
+                                      </div>
+                                      <div className="p-3 bg-gray-50 rounded">
+                                        <p className="text-xs text-gray-600">Frequency Category</p>
+                                        <p className="text-lg font-semibold capitalize">
+                                          {selectedCustomer.analytics.frequency_category}
+                                        </p>
+                                      </div>
+                                      <div className="p-3 bg-gray-50 rounded">
+                                        <p className="text-xs text-gray-600">Avg Days Between Orders</p>
+                                        <p className="text-lg font-semibold">
+                                          {Math.round(selectedCustomer.analytics.avg_days_between_orders)}
+                                        </p>
+                                      </div>
+                                      <div className="p-3 bg-gray-50 rounded md:col-span-2">
+                                        <p className="text-xs text-gray-600">At Risk</p>
+                                        <p className="text-lg font-semibold">
+                                          {selectedCustomer.analytics.is_at_risk ? "Yes" : "No"}
+                                        </p>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <p className="text-gray-500 mt-2">No analytics available</p>
+                                  )}
+                                </div>
+
+                                {selectedCustomer.orders && selectedCustomer.orders.length > 0 ? (
+                                  <div>
+                                    <label className="text-sm font-medium">Spend Over Time</label>
+                                    <div className="mt-2">
+                                      <ChartContainer
+                                        config={{ amount: { label: "Amount", color: "hsl(var(--chart-1))" } }}
+                                        className="h-40 w-full"
+                                      >
+                                        <ResponsiveContainer width="100%" height="100%">
+                                          <LineChart
+                                            data={selectedCustomer.orders
+                                              .map((o) => ({
+                                                date: new Date(o.created_at).toLocaleDateString("en-IN"),
+                                                amount: o.total_amount,
+                                              }))
+                                              .reverse()}
+                                            margin={{ top: 4, right: 12, left: 8, bottom: 4 }}
+                                          >
+                                            <CartesianGrid strokeDasharray="3 3" />
+                                            <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+                                            <YAxis tick={{ fontSize: 10 }} />
+                                            <ChartTooltip content={<ChartTooltipContent />} />
+                                            <Line
+                                              type="monotone"
+                                              dataKey="amount"
+                                              stroke="var(--color-amount)"
+                                              dot={false}
+                                              strokeWidth={2}
+                                            />
+                                          </LineChart>
+                                        </ResponsiveContainer>
+                                      </ChartContainer>
+                                    </div>
+                                  </div>
+                                ) : null}
                               </div>
                             )}
                           </DialogContent>

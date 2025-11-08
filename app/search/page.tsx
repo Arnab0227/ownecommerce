@@ -19,10 +19,11 @@ interface SearchResult {
   name: string
   description: string
   price: number
-  original_price?: number // Made optional to match API response
+  original_price?: number
   category: string
-  stock?: number // Made optional to handle undefined values
+  stock?: number
   image_url?: string
+  imageUrl?: string // allow camelCase from API normalization
   rating?: number
 }
 
@@ -47,6 +48,7 @@ function SearchPageContent() {
   const [ratingFilter, setRatingFilter] = useState(0)
 
   useEffect(() => {
+    setQuery(initialQuery)
     if (initialQuery) {
       performSearch(initialQuery)
     }
@@ -305,9 +307,10 @@ function SearchPageContent() {
                       description: product.description,
                       price: product.price,
                       original_price: product.original_price || product.price,
-                      imageUrl: product.image_url,
+                      // prefer camelCase if present, otherwise underscore, else placeholder usage remains inside card
+                      imageUrl: product.imageUrl || product.image_url,
                       category: product.category,
-                      stock: product.stock || 0, // Provide default value for stock
+                      stock: product.stock || 0,
                       rating: product.rating,
                     }}
                   />

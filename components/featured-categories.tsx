@@ -40,7 +40,7 @@ export function FeaturedCategories() {
         <div className="text-center mb-8 sm:mb-12">
           <div className="flex items-center justify-center mb-4">
             <Crown className="h-8 w-8 text-amber-600 mr-3" />
-            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900">Heritage Collections</h2>
+            <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900">Curated Collections</h2>
           </div>
           <p className="text-lg sm:text-xl text-gray-600 max-w-3xl mx-auto">
             Explore our carefully curated collections, each piece selected with the wisdom of three decades in fashion

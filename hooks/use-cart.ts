@@ -132,7 +132,7 @@ export function useCart() {
     updateQuantity,
     clearCart,
     getTotal,
-    getTotalPrice, // Added for backward compatibility
+    getTotalPrice, 
     getItemCount,
     isLoaded,
   }

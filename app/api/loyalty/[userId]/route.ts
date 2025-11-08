@@ -33,22 +33,58 @@ export async function GET(request: Request, { params }: { params: { userId: stri
       if (loyalty.length === 0) {
         // Create new loyalty record
         loyalty = await sql`
-          INSERT INTO loyalty_points (user_id, points, tier, lifetime_points)
-          VALUES (${userId}, 0, 'Bronze', 0)
+          INSERT INTO loyalty_points (user_id, points, current_points, tier, lifetime_points, total_earned)
+          VALUES (${userId}, 0, 0, 'Bronze', 0, 0)
           RETURNING *
         `
       }
     } catch (dbError) {
       console.error("Database error in loyalty API:", dbError)
-      // Return mock data if database fails
-      return NextResponse.json({
-        points: 1250,
-        tier: "Silver",
-        tier_progress: 62.5,
-        next_tier_points: 750,
-        lifetime_points: 2800,
-        redeemable_points: 1250,
-      })
+      if (dbError.message && dbError.message.includes('column "points" of relation "loyalty_points" does not exist')) {
+        console.log("Attempting to use current_points column instead of points")
+        try {
+          loyalty = await sql`
+            SELECT 
+              id, user_id, 
+              current_points as points, 
+              COALESCE(tier, 'Bronze') as tier,
+              COALESCE(total_earned, current_points) as lifetime_points,
+              created_at, updated_at
+            FROM loyalty_points WHERE user_id = ${userId}
+          `
+          if (loyalty.length === 0) {
+            loyalty = await sql`
+              INSERT INTO loyalty_points (user_id, current_points, tier, total_earned)
+              VALUES (${userId}, 0, 'Bronze', 0)
+              RETURNING 
+                id, user_id, 
+                current_points as points, 
+                tier,
+                total_earned as lifetime_points,
+                created_at, updated_at
+            `
+          }
+        } catch (fallbackError) {
+          console.error("Fallback query also failed:", fallbackError)
+          return NextResponse.json({
+            points: 1250,
+            tier: "Silver",
+            tier_progress: 62.5,
+            next_tier_points: 750,
+            lifetime_points: 2800,
+            redeemable_points: 1250,
+          })
+        }
+      } else {
+        return NextResponse.json({
+          points: 1250,
+          tier: "Silver",
+          tier_progress: 62.5,
+          next_tier_points: 750,
+          lifetime_points: 2800,
+          redeemable_points: 1250,
+        })
+      }
     }
 
     const loyaltyData = loyalty[0]

@@ -27,6 +27,7 @@ import {
   Globe,
 } from "lucide-react"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { formatDateTimeIndia } from "@/utils/date-utils"
 
 interface OrderItem {
   id: string
@@ -40,9 +41,10 @@ interface OrderItem {
 
 interface Order {
   id: string
+  order_number?: string
   user_id: string
   user_email: string
-  email?: string // allow fallback from API/coalesce
+  email?: string
   total_amount: number
   status: "pending" | "confirmed" | "processing" | "shipped" | "delivered" | "cancelled"
   payment_method: "razorpay" | "cod"
@@ -96,6 +98,10 @@ export default function AdminOrdersPage() {
 
   const isLikelyValidUserId = (id?: string) => Boolean(id && id !== "1" && id.length > 10)
 
+  const formatDateIndia = (dateString: string) => {
+    return formatDateTimeIndia(dateString)
+  }
+
   useEffect(() => {
     if (!loading && user && isAdmin) {
       loadOrders()
@@ -135,12 +141,17 @@ export default function AdminOrdersPage() {
 
         setOrders(ordersWithItems)
 
-        const uniqueUserIds = [...new Set(ordersWithItems.map((order) => order.user_id))].filter((id) =>
-          isLikelyValidUserId(id),
+        const candidates = ordersWithItems
+          .filter((o) => isLikelyValidUserId(o.user_id))
+          .map((o) => ({ id: o.user_id, hasEmail: Boolean(o.user_email || (o as any).email) }))
+
+        const uniqueNeedingProfile = Array.from(new Map(candidates.map((c) => [c.id, c])).values()).filter(
+          (c) => !c.hasEmail,
         )
-        const profilePromises = uniqueUserIds.map(async (userId) => {
-          const profile = await fetchUserProfile(userId)
-          return { userId, profile }
+
+        const profilePromises = uniqueNeedingProfile.map(async ({ id }) => {
+          const profile = await fetchUserProfile(id)
+          return { userId: id, profile }
         })
 
         const profileResults = await Promise.all(profilePromises)
@@ -175,6 +186,8 @@ export default function AdminOrdersPage() {
       filtered = filtered.filter(
         (order: any) =>
           order.id?.toString()?.toLowerCase().includes(q) ||
+          order.order_number?.toLowerCase()?.includes(q) ||
+          order.order_number?.replace("ORD", "").toLowerCase().includes(q) ||
           normalizeEmail(order).includes(q) ||
           order.razorpay_order_id?.toLowerCase()?.includes(q) ||
           order.razorpay_payment_id?.toLowerCase()?.includes(q),
@@ -372,7 +385,6 @@ export default function AdminOrdersPage() {
   }
 
   const handleEditOrder = (orderId: string) => {
-    // Navigate to edit order page or open modal
     window.location.href = `/admin/orders/${orderId}/edit`
   }
 
@@ -382,7 +394,7 @@ export default function AdminOrdersPage() {
       printWindow.document.write(`
         <html>
           <head>
-            <title>Invoice - Order #${order.id}</title>
+            <title>Invoice - Order #${order.order_number || order.id}</title>
             <style>
               body { font-family: Arial, sans-serif; margin: 20px; }
               .header { text-align: center; margin-bottom: 30px; }
@@ -396,10 +408,10 @@ export default function AdminOrdersPage() {
           <body>
             <div class="header">
               <h1>INVOICE</h1>
-              <p>Order #${order.id}</p>
+              <p>Order #${order.order_number || order.id}</p>
             </div>
             <div class="order-info">
-              <p><strong>Date:</strong> ${new Date(order.created_at).toLocaleDateString("en-IN")}</p>
+              <p><strong>Date:</strong> ${formatDateTimeIndia(order.created_at)}</p>
               <p><strong>Customer:</strong> ${order.user_email || order.email || "N/A"}</p>
               <p><strong>Payment Method:</strong> ${getPaymentMethodLabel(order.payment_method)}</p>
               <p><strong>Payment Status:</strong> ${order.payment_status}</p>
@@ -455,8 +467,8 @@ export default function AdminOrdersPage() {
     const rawPhone = order.shipping_address?.phone || ""
     const phoneDigits = rawPhone.replace(/\D+/g, "")
     if (email) {
-      const subject = `Regarding Your Order #${order.id}`
-      const body = `Dear Customer,\n\nWe hope this message finds you well. We are writing regarding your recent order #${order.id}.\n\nOrder Details:\n- Order Date: ${new Date(order.created_at).toLocaleDateString("en-IN")}\n- Total Amount: ${formatINR(order.total_amount)}\n- Status: ${order.status}\n\nIf you have any questions or concerns, please don't hesitate to reach out to us.\n\nBest regards,\nCustomer Service Team`
+      const subject = `Regarding Your Order #${order.order_number || order.id}`
+      const body = `Dear Customer,\n\nWe hope this message finds you well. We are writing regarding your recent order #${order.order_number || order.id}.\n\nOrder Details:\n- Order Date: ${formatDateTimeIndia(order.created_at)}\n- Total Amount: ${formatINR(order.total_amount)}\n- Status: ${order.status}\n\nIf you have any questions or concerns, please don't hesitate to reach out to us.\n\nBest regards,\nCustomer Service Team`
       window.location.href = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
       return
     }
@@ -514,7 +526,6 @@ export default function AdminOrdersPage() {
           </p>
         </div>
 
-        {/* Order Statistics */}
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4 mb-8">
           <Card>
             <CardContent className="pt-4">
@@ -590,7 +601,7 @@ export default function AdminOrdersPage() {
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 h-4 w-4" />
                   <Input
-                    placeholder="Search by order ID, customer email, transaction ID..."
+                    placeholder="Search by order number, customer email, or transaction ID..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="pl-10"
@@ -645,39 +656,56 @@ export default function AdminOrdersPage() {
             filteredOrders.map((order: Order) => (
               <Card key={`order-${order.id}`}>
                 <CardHeader>
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <CardTitle className="flex items-center gap-2">
-                        Order #{order.id}
-                        <Badge className={getStatusColor(order.status)}>
-                          {getStatusIcon(order.status)}
-                          <span className="ml-1 capitalize">{order.status}</span>
-                        </Badge>
-                        <Badge className={getPaymentStatusColor(order.payment_status)}>
-                          <span className="capitalize">{order.payment_status}</span>
-                        </Badge>
+                  <div className="flex flex-col sm:flex-row justify-between items-start gap-4">
+                    <div className="flex-1 min-w-0">
+                      <CardTitle className="flex flex-col sm:flex-row sm:items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-lg font-bold">Order #{order.order_number || `ORD${order.id}`}</span>
+                          {order.order_number && (
+                            <span className="text-sm font-medium text-gray-600 bg-gray-100 px-2 py-1 rounded">
+                              DB: #{order.id}
+                            </span>
+                          )}
+                          <Badge className={getStatusColor(order.status)}>
+                            {getStatusIcon(order.status)}
+                            <span className="ml-1 capitalize">{order.status}</span>
+                          </Badge>
+                          <Badge className={getPaymentStatusColor(order.payment_status)}>
+                            <span className="capitalize">{order.payment_status}</span>
+                          </Badge>
+                        </div>
                       </CardTitle>
-                      <div className="flex items-center gap-4 text-sm text-gray-600 mt-1">
+                      <div className="text-sm text-gray-600 mt-1 space-y-1">
+                        <div>
+                          <span className="font-medium">Order Number:</span>{" "}
+                          <span className="font-mono text-amber-700">#{order.order_number || `ORD${order.id}`}</span>
+                        </div>
+                        <div>
+                          <span className="font-medium">Database ID:</span>{" "}
+                          <span className="font-mono">#{order.id}</span>
+                        </div>
+                      </div>
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-sm text-gray-600 mt-2">
                         <span className="flex items-center gap-1">
-                          <User className="h-4 w-4" />
-                          {order.user_email || order.email || "Not provided"}
+                          <User className="h-4 w-4 flex-shrink-0" />
+                          <span className="truncate">{order.user_email || order.email || "Not provided"}</span>
                         </span>
                         <span className="flex items-center gap-1">
-                          <Calendar className="h-4 w-4" />
-                          {new Date(order.created_at).toLocaleDateString("en-IN")}
+                          <Calendar className="h-4 w-4 flex-shrink-0" />
+                          <span className="whitespace-nowrap">{formatDateTimeIndia(order.created_at)}</span>
                         </span>
                         <span className="flex items-center gap-1">
-                          <DollarSign className="h-4 w-4" />
-                          {formatINR(order.total_amount)}
+                          <DollarSign className="h-4 w-4 flex-shrink-0" />
+                          <span className="whitespace-nowrap">{formatINR(order.total_amount)}</span>
                         </span>
                       </div>
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                       <Select
                         value={order.status}
                         onValueChange={(value) => updateOrderStatus(order.id, value as Order["status"])}
                       >
-                        <SelectTrigger className="w-32">
+                        <SelectTrigger className="w-full sm:w-32">
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
@@ -689,14 +717,14 @@ export default function AdminOrdersPage() {
                           <SelectItem value="cancelled">Cancelled</SelectItem>
                         </SelectContent>
                       </Select>
-                      <Button variant="outline" size="sm">
+                      <Button variant="outline" size="sm" className="sm:w-auto bg-transparent">
                         <Eye className="h-4 w-4" />
                       </Button>
                     </div>
                   </div>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
                     {/* Order Items */}
                     <div>
                       <h4 className="font-medium mb-3">Items ({order.items?.length || 0})</h4>
@@ -706,6 +734,7 @@ export default function AdminOrdersPage() {
                             <img
                               src={item.product_image || "/placeholder.svg?height=48&width=48"}
                               alt={item.product_name || "Product"}
+                              loading="lazy"
                               className="w-12 h-12 object-cover rounded"
                             />
                             <div className="flex-1">
@@ -752,59 +781,59 @@ export default function AdminOrdersPage() {
                     <div>
                       <h4 className="font-medium mb-3">Payment Details</h4>
                       <div className="space-y-2 text-sm">
-                        <p className="flex items-center gap-2">
+                        <div className="flex items-center gap-2">
                           {getPaymentMethodIcon(order.payment_method)}
                           <strong>Method:</strong> {getPaymentMethodLabel(order.payment_method)}
-                        </p>
-                        <p>
+                        </div>
+                        <div className="flex items-center gap-2">
                           <strong>Status:</strong>
                           <Badge className={`ml-2 ${getPaymentStatusColor(order.payment_status)}`}>
                             {order.payment_status}
                           </Badge>
-                        </p>
+                        </div>
                         {order.razorpay_order_id && (
                           <div>
-                            <p>
+                            <div>
                               <strong>Razorpay Order ID:</strong>
-                            </p>
-                            <p className="font-mono text-xs bg-gray-100 px-2 py-1 rounded break-all">
+                            </div>
+                            <div className="font-mono text-xs bg-gray-100 px-2 py-1 rounded break-all">
                               {order.razorpay_order_id}
-                            </p>
+                            </div>
                           </div>
                         )}
                         {order.razorpay_payment_id && (
                           <div>
-                            <p>
+                            <div>
                               <strong>Transaction ID:</strong>
-                            </p>
-                            <p className="font-mono text-xs bg-gray-100 px-2 py-1 rounded break-all">
+                            </div>
+                            <div className="font-mono text-xs bg-gray-100 px-2 py-1 rounded break-all">
                               {order.razorpay_payment_id}
-                            </p>
+                            </div>
                           </div>
                         )}
                         {order.razorpay_signature && (
                           <div>
-                            <p>
+                            <div>
                               <strong>Signature:</strong>
-                            </p>
-                            <p className="font-mono text-xs bg-gray-100 px-2 py-1 rounded break-all">
+                            </div>
+                            <div className="font-mono text-xs bg-gray-100 px-2 py-1 rounded break-all">
                               {order.razorpay_signature.substring(0, 20)}...
-                            </p>
+                            </div>
                           </div>
                         )}
-                        <p>
+                        <div>
                           <strong>Delivery Fee:</strong> {formatINR(order.delivery_fee ?? 0)}
-                        </p>
+                        </div>
                         {order.user_notes ? (
                           <div className="mt-2">
-                            <p className="font-medium">Customer Notes</p>
-                            <p className="text-gray-700 text-sm whitespace-pre-wrap">{order.user_notes}</p>
+                            <div className="font-medium">Customer Notes</div>
+                            <div className="text-gray-700 text-sm whitespace-pre-wrap">{order.user_notes}</div>
                           </div>
                         ) : null}
                         {order.admin_notes ? (
                           <div className="mt-2">
-                            <p className="font-medium">Admin Notes</p>
-                            <p className="text-gray-700 text-sm whitespace-pre-wrap">{order.admin_notes}</p>
+                            <div className="font-medium">Admin Notes</div>
+                            <div className="text-gray-700 text-sm whitespace-pre-wrap">{order.admin_notes}</div>
                           </div>
                         ) : null}
                       </div>
@@ -815,12 +844,12 @@ export default function AdminOrdersPage() {
                       <h4 className="font-medium mb-3">Timeline & Actions</h4>
                       <div className="space-y-3">
                         <div className="text-sm">
-                          <p>
-                            <strong>Created:</strong> {new Date(order.created_at).toLocaleString("en-IN")}
-                          </p>
-                          <p>
-                            <strong>Updated:</strong> {new Date(order.updated_at).toLocaleString("en-IN")}
-                          </p>
+                          <div>
+                            <strong>Created:</strong> {formatDateTimeIndia(order.created_at)}
+                          </div>
+                          <div>
+                            <strong>Updated:</strong> {formatDateTimeIndia(order.updated_at)}
+                          </div>
                         </div>
                         <div className="space-y-2">
                           <Button

@@ -91,32 +91,18 @@ export default function ProfilePage() {
   }, [user])
 
   const loadAddresses = () => {
-    // Mock addresses - in real app, fetch from API
-    const mockAddresses: Address[] = [
-      {
-        id: "1",
-        type: "home",
-        name: "John Doe",
-        street: "123 Main Street, Apartment 4B",
-        city: "Mumbai",
-        state: "Maharashtra",
-        pincode: "400001",
-        phone: "+91 9876543210",
-        isDefault: true,
-      },
-      {
-        id: "2",
-        type: "work",
-        name: "John Doe",
-        street: "456 Business Park, Floor 5",
-        city: "Mumbai",
-        state: "Maharashtra",
-        pincode: "400002",
-        phone: "+91 9876543210",
-        isDefault: false,
-      },
-    ]
-    setAddresses(mockAddresses)
+    const saved = localStorage.getItem(`addresses_${user?.uid}`)
+    if (saved) {
+      try {
+        const parsedAddresses = JSON.parse(saved)
+        setAddresses(parsedAddresses)
+      } catch (error) {
+        console.error("Error parsing saved addresses:", error)
+        setAddresses([])
+      }
+    } else {
+      setAddresses([])
+    }
   }
 
   const handleSaveProfile = async () => {
@@ -145,7 +131,16 @@ export default function ProfilePage() {
       ...newAddress,
       id: Date.now().toString(),
     }
-    setAddresses([...addresses, address])
+
+    if (addresses.length === 0) {
+      address.isDefault = true
+    }
+
+    const updatedAddresses = [...addresses, address]
+    setAddresses(updatedAddresses)
+
+    localStorage.setItem(`addresses_${user?.uid}`, JSON.stringify(updatedAddresses))
+
     setNewAddress({
       type: "home",
       name: "",
@@ -164,7 +159,18 @@ export default function ProfilePage() {
   }
 
   const handleDeleteAddress = (id: string) => {
-    setAddresses(addresses.filter((addr) => addr.id !== id))
+    const updatedAddresses = addresses.filter((addr) => addr.id !== id)
+    setAddresses(updatedAddresses)
+
+    if (updatedAddresses.length > 0) {
+      const hasDefault = updatedAddresses.some((addr) => addr.isDefault)
+      if (!hasDefault) {
+        updatedAddresses[0].isDefault = true
+      }
+    }
+
+    localStorage.setItem(`addresses_${user?.uid}`, JSON.stringify(updatedAddresses))
+
     toast({
       title: "Success",
       description: "Address deleted successfully",
@@ -172,12 +178,14 @@ export default function ProfilePage() {
   }
 
   const handleSetDefaultAddress = (id: string) => {
-    setAddresses(
-      addresses.map((addr) => ({
-        ...addr,
-        isDefault: addr.id === id,
-      })),
-    )
+    const updatedAddresses = addresses.map((addr) => ({
+      ...addr,
+      isDefault: addr.id === id,
+    }))
+    setAddresses(updatedAddresses)
+
+    localStorage.setItem(`addresses_${user?.uid}`, JSON.stringify(updatedAddresses))
+
     toast({
       title: "Success",
       description: "Default address updated",
@@ -314,7 +322,7 @@ export default function ProfilePage() {
                   <div>
                     <Label htmlFor="gender">Gender</Label>
                     <select
-                    title="gender"
+                      title="gender"
                       id="gender"
                       value={profile.gender}
                       onChange={(e) => setProfile({ ...profile, gender: e.target.value })}
@@ -485,7 +493,7 @@ export default function ProfilePage() {
                       </div>
                       <div className="flex items-center space-x-2">
                         <input
-                        aria-label="default address"
+                          aria-label="default address"
                           type="checkbox"
                           id="isDefault"
                           checked={newAddress.isDefault}

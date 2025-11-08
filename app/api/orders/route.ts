@@ -16,7 +16,7 @@ export async function GET(request: Request) {
       orders = await sql`
         SELECT 
           id,
-          order_number,            -- expose for UI
+          order_number,
           user_id,
           email,
           total_amount,
@@ -25,8 +25,10 @@ export async function GET(request: Request) {
           billing_address,
           payment_method,
           payment_status,
-          status as order_status,
-          tracking_number,         -- expose for UI
+          status as order_status,  -- map status to order_status for frontend consistency
+          tracking_number,
+          user_notes,
+          admin_notes,
           razorpay_order_id,
           razorpay_payment_id,
           created_at,
@@ -39,7 +41,7 @@ export async function GET(request: Request) {
       orders = await sql`
         SELECT 
           id,
-          order_number,            -- expose for UI
+          order_number,
           user_id,
           email,
           total_amount,
@@ -48,8 +50,10 @@ export async function GET(request: Request) {
           billing_address,
           payment_method,
           payment_status,
-          status as order_status,
-          tracking_number,         -- expose for UI
+          status as order_status,  -- map status to order_status for frontend consistency
+          tracking_number,
+          user_notes,
+          admin_notes,
           razorpay_order_id,
           razorpay_payment_id,
           created_at,
@@ -59,6 +63,7 @@ export async function GET(request: Request) {
       `
     }
 
+    console.log("[v0] Orders query result:", orders) // Debug log
     return NextResponse.json(orders)
   } catch (error) {
     console.error("Error fetching orders:", error)
@@ -86,8 +91,8 @@ export async function POST(request: Request) {
       razorpay_order_id,
       razorpay_payment_id,
       delivery_fee = 0,
-      user_notes, // notes from customer at checkout
-      admin_notes, // not expected at creation, but accept if sent
+      user_notes,
+      admin_notes,
     } = body
 
     if (!user_id || !items || !total_amount || !shipping_address || !payment_method) {
@@ -100,8 +105,19 @@ export async function POST(request: Request) {
       )
     }
 
+    const today = new Date()
+    const year = today.getFullYear().toString().slice(-2)
+    const month = (today.getMonth() + 1).toString().padStart(2, "0")
+    const day = today.getDate().toString().padStart(2, "0")
+    const randomNum = Math.floor(Math.random() * 999) + 1
+    const orderNumber = `ORD${year}${month}${day}${randomNum.toString().padStart(3, "0")}`
+
+    const calculatedDeliveryFee = total_amount >= 699 ? 0 : 70
+    const finalDeliveryFee = delivery_fee || calculatedDeliveryFee
+
     const orderResult = await sql`
       INSERT INTO orders (
+        order_number,
         user_id, 
         email, 
         total_amount, 
@@ -116,13 +132,15 @@ export async function POST(request: Request) {
         notes,
         user_notes,
         admin_notes,
-        created_at
+        created_at,
+        updated_at
       )
       VALUES (
+        ${orderNumber},
         ${user_id}, 
         ${user_email || null}, 
         ${total_amount}, 
-        ${delivery_fee},
+        ${finalDeliveryFee},
         ${JSON.stringify(shipping_address)}, 
         ${JSON.stringify(shipping_address)},
         ${payment_method}, 
@@ -133,7 +151,8 @@ export async function POST(request: Request) {
         ${user_notes || null},
         ${user_notes || null},
         ${admin_notes || null},
-        CURRENT_TIMESTAMP
+        NOW() AT TIME ZONE 'UTC',
+        NOW() AT TIME ZONE 'UTC'
       )
       RETURNING *
     `
@@ -146,14 +165,16 @@ export async function POST(request: Request) {
           product_id, 
           quantity, 
           price,
-          total
+          total,
+          created_at
         )
         VALUES (
           ${order.id}, 
           ${item.product_id}, 
           ${item.quantity}, 
           ${item.price},
-          ${item.quantity * item.price}
+          ${item.quantity * item.price},
+          NOW() AT TIME ZONE 'UTC'
         )
       `
       if (payment_status === "paid") {
@@ -163,6 +184,26 @@ export async function POST(request: Request) {
           WHERE id = ${item.product_id}
         `
       }
+    }
+
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"
+      await fetch(`${baseUrl}/api/notifications/email`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "order_confirmation",
+          data: {
+            orderId: order.id,
+            userEmail: user_email,
+            status: "pending",
+            totalAmount: total_amount,
+          },
+        }),
+      })
+      console.log("[v0] Order confirmation email sent for order:", order.id)
+    } catch (emailError) {
+      console.error("[v0] Failed to send order confirmation email:", emailError)
     }
 
     return NextResponse.json(order)

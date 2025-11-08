@@ -1,14 +1,15 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { useAuth } from "@/hooks/use-firebase-auth"
 import { useToast } from "@/hooks/use-toast"
-import { Package, Truck, CheckCircle, Clock, MapPin, Star, Loader2 } from "lucide-react"
+import { Package, Truck, CheckCircle, Clock, Star, Loader2, Eye } from "lucide-react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { InvoiceGenerator } from "@/components/invoice-generator"
+import { formatDateTimeIndia } from "@/utils/date-utils"
+import { useRouter } from "next/navigation"
 
 interface OrderItem {
   id: string
@@ -16,6 +17,7 @@ interface OrderItem {
   price: number
   quantity: number
   image: string
+  product_id?: string | number
 }
 
 interface Order {
@@ -41,6 +43,7 @@ interface Order {
 export default function OrdersPage() {
   const { user, loading } = useAuth()
   const { toast } = useToast()
+  const router = useRouter()
   const [orders, setOrders] = useState<Order[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
@@ -91,6 +94,7 @@ export default function OrdersPage() {
       if (!response.ok) throw new Error("failed")
 
       const rows: DbOrderRow[] = await response.json()
+      console.log("[v0] Loaded orders from API:", rows)
 
       const mapped = await Promise.all(
         rows.map(async (row) => {
@@ -107,18 +111,19 @@ export default function OrdersPage() {
               price: Number(it.price || 0),
               quantity: Number(it.quantity || 0),
               image: it.product_image || "/placeholder.svg?height=80&width=80",
+              product_id: it.product_id,
             })) || []
 
           const shipping = row.shipping_address || {}
 
           const uiOrder: Order & { adminNotes?: string } = {
             id: String(row.id),
-            orderNumber: row.order_number || String(row.id),
+            orderNumber: row.order_number || `ORD${row.id}`,
             date: row.created_at,
             status: (row.order_status === "confirmed" ? "processing" : row.order_status) as Order["status"],
             items,
             totalAmount: Number(row.total_amount ?? 0),
-            loyaltyPointsEarned: Math.round(Number(row.total_amount ?? 0) * 0.015),
+            loyaltyPointsEarned: Math.round(Number(row.total_amount ?? 0) * 0.02),
             shippingAddress: {
               name: shipping?.name || "N/A",
               street: shipping?.address || "N/A",
@@ -133,6 +138,7 @@ export default function OrdersPage() {
         }),
       )
 
+      console.log("[v0] Mapped orders:", mapped)
       setOrders(mapped)
     } catch (e) {
       console.error("Error loading orders:", e)
@@ -176,6 +182,10 @@ export default function OrdersPage() {
       default:
         return <Package className="h-4 w-4" />
     }
+  }
+
+  const viewOrderDetails = (orderId: string) => {
+    router.push(`/order-status?orderId=${orderId}`)
   }
 
   const currentOrders = orders.filter((order) => ["pending", "processing", "shipped"].includes(order.status))
@@ -233,104 +243,37 @@ export default function OrdersPage() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="space-y-6">
+              <div className="space-y-4">
                 {currentOrders.map((order) => (
-                  <Card key={order.id}>
-                    <CardHeader>
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <CardTitle className="flex items-center gap-2">
-                            Order #{order.orderNumber}
+                  <Card
+                    key={order.id}
+                    className="cursor-pointer hover:shadow-md transition-shadow"
+                    onClick={() => viewOrderDetails(order.id)}
+                  >
+                    <CardContent className="p-4">
+                      <div className="flex justify-between items-center">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <h3 className="font-semibold">Order #{order.orderNumber}</h3>
                             <Badge className={getStatusColor(order.status)}>
                               {getStatusIcon(order.status)}
                               <span className="ml-1 capitalize">{order.status}</span>
                             </Badge>
-                          </CardTitle>
-                          <p className="text-sm text-gray-600 mt-1">
-                            Placed on {new Date(order.date).toLocaleDateString()}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-semibold">₹{order.totalAmount.toLocaleString("en-IN")}</p>
-                          <p className="text-sm text-green-600">
-                            <Star className="h-3 w-3 inline mr-1" />
-                            {order.loyaltyPointsEarned} points earned
-                          </p>
-                        </div>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-4">
-                        <div className="space-y-3">
-                          {order.items.map((item) => (
-                            <div key={item.id} className="flex items-center gap-4">
-                              <img
-                                src={item.image || "/placeholder.svg"}
-                                alt={item.name}
-                                className="w-16 h-16 object-cover rounded-md"
-                              />
-                              <div className="flex-1">
-                                <h4 className="font-medium">{item.name}</h4>
-                                <p className="text-sm text-gray-600">
-                                  Quantity: {item.quantity} × ₹{item.price}
-                                </p>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-
-                        <div className="border-t pt-4">
-                          <h4 className="font-medium flex items-center gap-2 mb-2">
-                            <MapPin className="h-4 w-4" />
-                            Shipping Address
-                          </h4>
+                          </div>
+                          <p className="text-sm text-gray-600">Placed on {formatDateTimeIndia(order.date)}</p>
                           <p className="text-sm text-gray-600">
-                            {order.shippingAddress.name}
-                            <br />
-                            {order.shippingAddress.street}
-                            <br />
-                            {order.shippingAddress.city}, {order.shippingAddress.state} -{" "}
-                            {order.shippingAddress.pincode}
+                            {order.items.length} item{order.items.length > 1 ? "s" : ""} • ₹
+                            {order.totalAmount.toLocaleString("en-IN")}
                           </p>
                         </div>
-
-                        {order.trackingNumber && (
-                          <div className="border-t pt-4">
-                            <h4 className="font-medium flex items-center gap-2 mb-2">
-                              <Truck className="h-4 w-4" />
-                              Tracking Information
-                            </h4>
-                            <p className="text-sm text-gray-600">
-                              Tracking Number: <span className="font-mono">{order.trackingNumber}</span>
+                        <div className="flex items-center gap-2">
+                          <div className="text-right">
+                            <p className="text-sm text-green-600">
+                              <Star className="h-3 w-3 inline mr-1" />
+                              {order.loyaltyPointsEarned} points
                             </p>
-                            {order.estimatedDelivery && (
-                              <p className="text-sm text-gray-600">
-                                Estimated Delivery: {new Date(order.estimatedDelivery).toLocaleDateString()}
-                              </p>
-                            )}
                           </div>
-                        )}
-
-                        {/* Seller Notes */}
-                        {(order as any).adminNotes ? (
-                          <div className="border-t pt-4">
-                            <h4 className="font-medium mb-2">Seller Notes</h4>
-                            <p className="text-sm text-gray-700 whitespace-pre-wrap">{(order as any).adminNotes}</p>
-                          </div>
-                        ) : null}
-
-                        <div className="flex gap-2 pt-4">
-                          <Button variant="outline" size="sm">
-                            Track Order
-                          </Button>
-                          <Button variant="outline" size="sm">
-                            Contact Support
-                          </Button>
-                          {order.status === "pending" && (
-                            <Button variant="outline" size="sm">
-                              Retry Payment
-                            </Button>
-                          )}
+                          <Eye className="h-5 w-5 text-gray-400" />
                         </div>
                       </div>
                     </CardContent>
@@ -353,69 +296,39 @@ export default function OrdersPage() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="space-y-6">
+              <div className="space-y-4">
                 {previousOrders.map((order) => (
-                  <Card key={order.id}>
-                    <CardHeader>
-                      <div className="flex justify-between items-start">
-                        <div>
-                          <CardTitle className="flex items-center gap-2">
-                            Order #{order.orderNumber}
+                  <Card
+                    key={order.id}
+                    className="cursor-pointer hover:shadow-md transition-shadow"
+                    onClick={() => viewOrderDetails(order.id)}
+                  >
+                    <CardContent className="p-4">
+                      <div className="flex justify-between items-center">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <h3 className="font-semibold">Order #{order.orderNumber}</h3>
                             <Badge className={getStatusColor(order.status)}>
                               {getStatusIcon(order.status)}
                               <span className="ml-1 capitalize">{order.status}</span>
                             </Badge>
-                          </CardTitle>
-                          <p className="text-sm text-gray-600 mt-1">
-                            {order.status === "delivered" ? "Delivered" : "Placed"} on{" "}
-                            {new Date(order.date).toLocaleDateString()}
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-semibold">₹{order.totalAmount.toLocaleString("en-IN")}</p>
-                          <p className="text-sm text-green-600">
-                            <Star className="h-3 w-3 inline mr-1" />
-                            {order.loyaltyPointsEarned} points earned
-                          </p>
-                        </div>
-                      </div>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-4">
-                        <div className="space-y-3">
-                          {order.items.map((item) => (
-                            <div key={item.id} className="flex items-center gap-4">
-                              <img
-                                src={item.image || "/placeholder.svg"}
-                                alt={item.name}
-                                className="w-16 h-16 object-cover rounded-md"
-                              />
-                              <div className="flex-1">
-                                <h4 className="font-medium">{item.name}</h4>
-                                <p className="text-sm text-gray-600">
-                                  Quantity: {item.quantity} × ₹{item.price}
-                                </p>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* Seller Notes */}
-                        {(order as any).adminNotes ? (
-                          <div className="border-t pt-4">
-                            <h4 className="font-medium mb-2">Seller Notes</h4>
-                            <p className="text-sm text-gray-700 whitespace-pre-wrap">{(order as any).adminNotes}</p>
                           </div>
-                        ) : null}
-
-                        <div className="flex gap-2 pt-4">
-                          <Button variant="outline" size="sm">
-                            Reorder
-                          </Button>
-                          <Button variant="outline" size="sm">
-                            Write Review
-                          </Button>
-                          <InvoiceGenerator orderId={order.id} orderStatus={order.status} />
+                          <p className="text-sm text-gray-600">
+                            {order.status === "delivered" ? "Delivered" : "Placed"} on {formatDateTimeIndia(order.date)}
+                          </p>
+                          <p className="text-sm text-gray-600">
+                            {order.items.length} item{order.items.length > 1 ? "s" : ""} • ₹
+                            {order.totalAmount.toLocaleString("en-IN")}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="text-right">
+                            <p className="text-sm text-green-600">
+                              <Star className="h-3 w-3 inline mr-1" />
+                              {order.loyaltyPointsEarned} points
+                            </p>
+                          </div>
+                          <Eye className="h-5 w-5 text-gray-400" />
                         </div>
                       </div>
                     </CardContent>

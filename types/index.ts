@@ -36,7 +36,7 @@ export interface Order {
   userId: string
   items: CartItem[]
   total: number
-  status: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled'
+  status: "pending" | "processing" | "shipped" | "delivered" | "cancelled"
   createdAt: Date
   updatedAt: Date
   shippingAddress: {
@@ -47,8 +47,9 @@ export interface Order {
     pincode: string
     phone: string
   }
-  paymentMethod: 'cod' | 'online'
+  paymentMethod: "cod" | "online"
   deliveryFee: number
+  email?: string
 }
 
 export interface OrderItem {

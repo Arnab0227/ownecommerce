@@ -57,6 +57,13 @@ export async function POST(request: NextRequest) {
       `
     }
 
+    try {
+      await awardLoyaltyPoints(sql, order.user_id, order.total_amount, order.id, order.order_number)
+    } catch (loyaltyError) {
+      console.error("Failed to award loyalty points:", loyaltyError)
+      // Don't fail the payment verification if loyalty points fail
+    }
+
     return NextResponse.json({
       success: true,
       order_id: order.id,
@@ -68,4 +75,62 @@ export async function POST(request: NextRequest) {
     const errorMessage = error instanceof Error ? error.message : "Payment verification failed"
     return NextResponse.json({ error: errorMessage }, { status: 500 })
   }
+}
+
+async function awardLoyaltyPoints(
+  sql: any,
+  userId: string,
+  orderAmount: number,
+  orderId: string | number,
+  orderNumber: string | number,
+) {
+  // Calculate points: 2% of order amount (1 point per ₹50)
+  const pointsEarned = Math.round(orderAmount * 0.02)
+  if (pointsEarned <= 0) return
+
+  // Normalize types to help Postgres infer correctly (loyalty_transactions.order_id is VARCHAR)
+  const orderIdStr = String(orderId)
+  const description = `Points earned from order #${orderNumber}`
+
+  // Get or create loyalty record
+  const loyaltyRecord = await sql`
+    SELECT * FROM loyalty_points WHERE user_id = ${String(userId)}
+  `
+
+  if (loyaltyRecord.length === 0) {
+    await sql`
+      INSERT INTO loyalty_points (user_id, current_points, total_earned, tier)
+      VALUES (${String(userId)}, ${pointsEarned}, ${pointsEarned}, 'Bronze')
+    `
+  } else {
+    const newCurrentPoints = Number(loyaltyRecord[0].current_points || 0) + pointsEarned
+    const newTotalEarned = Number(loyaltyRecord[0].total_earned || 0) + pointsEarned
+
+    let newTier = "Bronze"
+    if (newTotalEarned >= 5000) newTier = "Platinum"
+    else if (newTotalEarned >= 2500) newTier = "Gold"
+    else if (newTotalEarned >= 1000) newTier = "Silver"
+
+    await sql`
+      UPDATE loyalty_points 
+      SET current_points = ${newCurrentPoints},
+          total_earned = ${newTotalEarned},
+          tier = ${newTier},
+          updated_at = CURRENT_TIMESTAMP
+      WHERE user_id = ${String(userId)}
+    `
+  }
+
+  // Use only parameters (no string interpolation inside SQL), cast order_id explicitly to text context
+  await sql`
+    INSERT INTO loyalty_transactions (user_id, type, points, description, order_id)
+    VALUES (${String(userId)}, 'earned', ${pointsEarned}, ${description}, ${orderIdStr})
+  `
+
+  console.log("[v0] Awarded loyalty points:", {
+    userId: String(userId),
+    pointsEarned,
+    orderId: orderIdStr,
+    orderNumber: String(orderNumber),
+  })
 }

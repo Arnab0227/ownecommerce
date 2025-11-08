@@ -30,6 +30,7 @@ import {
   Save,
   X,
   AlertTriangle,
+  MessageSquare,
 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import {
@@ -287,13 +288,23 @@ export default function AdminPage() {
         })
         fetchAdminStats()
       } else {
-        throw new Error("Failed to delete product")
+        const errorData = await response.json()
+
+        if (response.status === 409) {
+          toast({
+            title: "Cannot Delete Product",
+            description: errorData.message || "This product has existing orders and cannot be deleted.",
+            variant: "destructive",
+          })
+        } else {
+          throw new Error(errorData.error || "Failed to delete product")
+        }
       }
     } catch (error) {
       console.error("Error deleting product:", error)
       toast({
         title: "Error",
-        description: "Failed to delete product",
+        description: error instanceof Error ? error.message : "Failed to delete product",
         variant: "destructive",
       })
     } finally {
@@ -493,7 +504,7 @@ export default function AdminPage() {
             ) : null}
 
             {/* Quick Actions */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
               <Card className="hover:shadow-lg transition-shadow cursor-pointer">
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -539,6 +550,23 @@ export default function AdminPage() {
                     <p className="text-gray-600 mb-4">Track views, trends, and performance metrics</p>
                     <Button variant="outline" className="w-full bg-transparent">
                       View Analytics
+                    </Button>
+                  </CardContent>
+                </Link>
+              </Card>
+
+              <Card className="hover:shadow-lg transition-shadow cursor-pointer">
+                <Link href="/admin/queries">
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <MessageSquare className="h-5 w-5 text-indigo-600" />
+                      Contact Queries
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-gray-600 mb-4">Manage customer inquiries and support requests</p>
+                    <Button variant="outline" className="w-full bg-transparent">
+                      View Queries
                     </Button>
                   </CardContent>
                 </Link>

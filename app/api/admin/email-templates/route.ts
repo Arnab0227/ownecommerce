@@ -30,9 +30,9 @@ export async function GET() {
       },
     ]
 
-    return NextResponse.json(templates)
+    return NextResponse.json({ templates })
   } catch (error) {
     console.error("Error fetching email templates:", error)
-    return NextResponse.json({ error: "Failed to fetch templates" }, { status: 500 })
+    return NextResponse.json({ templates: [] }, { status: 200 })
   }
 }

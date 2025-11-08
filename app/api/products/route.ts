@@ -1,133 +1,239 @@
 import { NextResponse } from "next/server"
 import { neon } from "@neondatabase/serverless"
-
-// Mock data for fallback
-const mockProducts = [
-  {
-    id: "1",
-    name: "Elegant Silk Saree",
-    description: "Beautiful handwoven silk saree with traditional patterns",
-    price: 8999,
-    original_price: 12999,
-    category: "women",
-    stock: 15,
-    imageUrl: "/placeholder.svg?height=400&width=300&text=Silk+Saree",
-  },
-  {
-    id: "2",
-    name: "Designer Kurti Set",
-    description: "Premium cotton kurti with matching dupatta",
-    price: 2499,
-    original_price: 3499,
-    category: "women",
-    stock: 25,
-    imageUrl: "/placeholder.svg?height=400&width=300&text=Kurti+Set",
-  },
-  {
-    id: "3",
-    name: "Kids Party Dress",
-    description: "Adorable party dress for special occasions",
-    price: 1899,
-    original_price: 2499,
-    category: "kids",
-    stock: 20,
-    imageUrl: "/placeholder.svg?height=400&width=300&text=Kids+Dress",
-  },
-  {
-    id: "4",
-    name: "Traditional Lehenga",
-    description: "Stunning lehenga for weddings and festivals",
-    price: 15999,
-    original_price: 19999,
-    category: "women",
-    stock: 8,
-    imageUrl: "/placeholder.svg?height=400&width=300&text=Lehenga",
-  },
-  {
-    id: "5",
-    name: "Kids Ethnic Wear",
-    description: "Comfortable ethnic wear for kids",
-    price: 1299,
-    original_price: 1699,
-    category: "kids",
-    stock: 30,
-    imageUrl: "/placeholder.svg?height=400&width=300&text=Kids+Ethnic",
-  },
-  {
-    id: "6",
-    name: "Cotton Salwar Suit",
-    description: "Comfortable cotton salwar suit for daily wear",
-    price: 1999,
-    original_price: 2799,
-    category: "women",
-    stock: 18,
-    imageUrl: "/placeholder.svg?height=400&width=300&text=Salwar+Suit",
-  },
-]
+import { redis, cacheKeys, cacheTTL } from "@/lib/redis"
 
 export async function GET(request: Request) {
   try {
-    const { searchParams } = new URL(request.url)
-    const category = searchParams.get("category")
-
-    if (process.env.DATABASE_URL) {
-      const sql = neon(process.env.DATABASE_URL)
-
-      let products
-      if (category) {
-        products = await sql`
-          SELECT 
-            id,
-            name,
-            description,
-            price,
-            original_price,
-            category,
-            COALESCE(stock_quantity, 0) as stock,
-            image_url as "imageUrl",
-            is_featured,
-            is_active,
-            sku,
-            material,
-            care_instructions
-          FROM products 
-          WHERE category = ${category} AND is_active = true
-          ORDER BY created_at DESC
-        `
-      } else {
-        products = await sql`
-          SELECT 
-            id,
-            name,
-            description,
-            price,
-            original_price,
-            category,
-            COALESCE(stock_quantity, 0) as stock,
-            image_url as "imageUrl",
-            is_featured,
-            is_active,
-            sku,
-            material,
-            care_instructions
-          FROM products 
-          WHERE is_active = true
-          ORDER BY created_at DESC
-        `
-      }
-
-      return NextResponse.json(products)
-    } else {
-      console.log("No DATABASE_URL found, returning mock data")
-      const filteredProducts = category ? mockProducts.filter((product) => product.category === category) : mockProducts
-      return NextResponse.json(filteredProducts)
+    if (!process.env.DATABASE_URL) {
+      console.log("[v0] No DATABASE_URL found, returning empty array")
+      return NextResponse.json([])
     }
-  } catch (error) {
-    console.error("Database error:", error)
-    console.log("Falling back to mock data")
+
     const { searchParams } = new URL(request.url)
     const category = searchParams.get("category")
-    const filteredProducts = category ? mockProducts.filter((product) => product.category === category) : mockProducts
-    return NextResponse.json(filteredProducts)
+
+    console.log("[v0] Products API called with category:", category)
+
+    // Generate cache key based on category filter
+    const cacheKey = category ? cacheKeys.categoryProducts(category) : cacheKeys.allProducts()
+    const cachedProducts = await redis.get(cacheKey)
+
+    if (cachedProducts && Array.isArray(cachedProducts)) {
+      console.log("[v0] Returning cached products for category:", category || "all", "Count:", cachedProducts.length)
+      return NextResponse.json(cachedProducts)
+    }
+
+    if (cachedProducts !== null) {
+      console.log("[v0] Cache returned non-array data, clearing cache for key:", cacheKey)
+      await redis.delete(cacheKey)
+    }
+
+    const sql = neon(process.env.DATABASE_URL)
+
+    let query
+    if (category) {
+      console.log("[v0] Running database query for category:", category)
+      query = sql`
+        SELECT 
+          id,
+          name,
+          description,
+          price,
+          original_price,
+          category,
+          COALESCE(stock_quantity, 0) as stock_quantity,
+          image_url,
+          is_featured,
+          is_active,
+          sku,
+          material,
+          care_instructions,
+          created_at,
+          updated_at
+        FROM products 
+        WHERE category = ${category}
+        ORDER BY created_at DESC
+      `
+    } else {
+      query = sql`
+        SELECT 
+          id,
+          name,
+          description,
+          price,
+          original_price,
+          category,
+          COALESCE(stock_quantity, 0) as stock_quantity,
+          image_url,
+          is_featured,
+          is_active,
+          sku,
+          material,
+          care_instructions,
+          created_at,
+          updated_at
+        FROM products 
+        ORDER BY created_at DESC
+      `
+    }
+
+    const products = await query
+
+    const productsArray = Array.isArray(products) ? products : []
+    console.log("[v0] Database query returned", productsArray.length, "products for category:", category || "all")
+
+    if (productsArray.length > 0 || true) {
+      // Cache even empty arrays to prevent repeated DB queries
+      await redis.set(cacheKey, JSON.stringify(productsArray), cacheTTL.long)
+    }
+
+    return NextResponse.json(productsArray)
+  } catch (error) {
+    console.error("[v0] Error fetching products:", error)
+    return NextResponse.json([])
+  }
+}
+
+export async function POST(request: Request) {
+  try {
+    if (!process.env.DATABASE_URL) {
+      return NextResponse.json({ error: "Database not configured" }, { status: 500 })
+    }
+
+    const sql = neon(process.env.DATABASE_URL)
+    const body = await request.json()
+
+    const {
+      name,
+      description,
+      price,
+      original_price,
+      category,
+      stock_quantity,
+      image_url,
+      is_featured,
+      is_active,
+      sku,
+      material,
+      care_instructions,
+    } = body
+
+    if (!name || !description || !price || !category) {
+      return NextResponse.json(
+        {
+          error: "Missing required fields",
+          required: ["name", "description", "price", "category"],
+        },
+        { status: 400 },
+      )
+    }
+
+    const result = await sql`
+      INSERT INTO products (
+        name,  
+        description, 
+        price, 
+        original_price, 
+        category, 
+        stock_quantity, 
+        image_url,
+        is_featured,
+        is_active,
+        sku,
+        material,
+        care_instructions
+      )
+      VALUES (
+        ${name},  
+        ${description}, 
+        ${price}, 
+        ${original_price}, 
+        ${category}, 
+        ${stock_quantity || 0}, 
+        ${image_url || `/placeholder.svg?height=400&width=300&text=${encodeURIComponent(name)}`},
+        ${is_featured || false},
+        ${is_active !== false},
+        ${sku},
+        ${material || null},
+        ${care_instructions || null}
+      )
+      ON CONFLICT (sku)
+      DO UPDATE SET
+        stock_quantity = COALESCE(products.stock_quantity, 0) + EXCLUDED.stock_quantity,
+        updated_at = CURRENT_TIMESTAMP
+      RETURNING *
+    `
+
+    return NextResponse.json(result[0])
+  } catch (error) {
+    console.error("Error creating product:", error)
+    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred"
+    return NextResponse.json({ error: "Failed to create product", details: errorMessage }, { status: 500 })
+  }
+}
+
+export async function PUT(request: Request) {
+  try {
+    if (!process.env.DATABASE_URL) {
+      return NextResponse.json({ error: "Database not configured" }, { status: 500 })
+    }
+
+    const sql = neon(process.env.DATABASE_URL)
+    const body = await request.json()
+
+    const {
+      id,
+      name,
+      description,
+      price,
+      original_price,
+      category,
+      stock_quantity,
+      image_url,
+      is_featured,
+      is_active,
+      sku,
+      material,
+      care_instructions,
+    } = body
+
+    if (!id || !name || !description || !price || !category) {
+      return NextResponse.json(
+        {
+          error: "Missing required fields",
+          required: ["id", "name", "description", "price", "category"],
+        },
+        { status: 400 },
+      )
+    }
+
+    const result = await sql`
+      UPDATE products SET
+        name = ${name},
+        description = ${description},
+        price = ${price},
+        original_price = ${original_price},
+        category = ${category},
+        stock_quantity = ${stock_quantity || 0},
+        image_url = ${image_url || `/placeholder.svg?height=400&width=300&text=${encodeURIComponent(name)}`},
+        is_featured = ${is_featured || false},
+        is_active = ${is_active !== false},
+        sku = ${sku},
+        material = ${material || null},
+        care_instructions = ${care_instructions || null},
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ${id}
+      RETURNING *
+    `
+
+    if (result.length === 0) {
+      return NextResponse.json({ error: "Product not found" }, { status: 404 })
+    }
+
+    return NextResponse.json(result[0])
+  } catch (error) {
+    console.error("Error updating product:", error)
+    const errorMessage = error instanceof Error ? error.message : "Unknown error occurred"
+    return NextResponse.json({ error: "Failed to update product", details: errorMessage }, { status: 500 })
   }
 }

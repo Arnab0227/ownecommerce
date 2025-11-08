@@ -21,7 +21,6 @@ interface StoreSettings {
   store_address: string
   currency: string
   timezone: string
-  tax_rate: number
   shipping_fee: number
   free_shipping_threshold: number
   privacy_policy_url: string
@@ -55,7 +54,6 @@ export default function AdminSettingsPage() {
     store_address: "",
     currency: "INR",
     timezone: "Asia/Kolkata",
-    tax_rate: 18,
     shipping_fee: 50,
     free_shipping_threshold: 999,
     privacy_policy_url: "",
@@ -93,7 +91,10 @@ export default function AdminSettingsPage() {
 
       if (response.ok) {
         const data = await response.json()
-        setStoreSettings(data.store || storeSettings)
+        setStoreSettings({
+          ...storeSettings,
+          ...data.store,
+        })
         setNotificationSettings(data.notifications || notificationSettings)
         setPaymentSettings(data.payments || paymentSettings)
       } else {
@@ -268,18 +269,6 @@ export default function AdminSettingsPage() {
                 </div>
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div>
-                    <Label htmlFor="tax_rate">Tax Rate (%)</Label>
-                    <Input
-                      id="tax_rate"
-                      type="number"
-                      step="0.01"
-                      value={storeSettings.tax_rate}
-                      onChange={(e) =>
-                        setStoreSettings({ ...storeSettings, tax_rate: Number.parseFloat(e.target.value) || 0 })
-                      }
-                    />
-                  </div>
                   <div>
                     <Label htmlFor="shipping_fee">Shipping Fee (₹)</Label>
                     <Input
@@ -587,7 +576,7 @@ export default function AdminSettingsPage() {
                     </h4>
                     <ul className="text-sm text-green-700 space-y-1">
                       <li>• Shipping Policy must be accessible</li>
-                      <li>• Cancellation & Refund Policy required</li>
+                      <li>�� Cancellation & Refund Policy required</li>
                       <li>• Terms of Service must be linked</li>
                       <li>• Privacy Policy must be available</li>
                     </ul>

@@ -38,9 +38,9 @@ export function WhyChooseUs() {
     <section className="py-12 sm:py-16 bg-gradient-to-b from-white to-amber-50/50">
       <div className="container mx-auto px-4">
         <div className="text-center mb-8 sm:mb-12">
-          <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 mb-4">The Golden Threads Promise</h2>
+          <h2 className="text-2xl sm:text-3xl md:text-4xl font-bold text-gray-900 mb-4">The Suktara Promise</h2>
           <p className="text-lg sm:text-xl text-gray-600 max-w-3xl mx-auto">
-            From our heritage boutique to your home - the same commitment to excellence that has served families for
+            From our heritage retail to your home - the same commitment to excellence that has served families for
             over three decades
           </p>
         </div>
@@ -65,7 +65,7 @@ export function WhyChooseUs() {
             <Crown className="h-12 w-12 sm:h-16 sm:w-16 text-amber-600 mx-auto mb-4" />
             <h3 className="text-xl sm:text-2xl font-bold text-gray-900 mb-3">From 1989 to Today</h3>
             <p className="text-gray-700 max-w-2xl mx-auto text-sm sm:text-base">
-              What started as a small boutique serving local families has grown into a trusted name in fashion. Now, we
+              What started as a small retail serving local families has grown into a trusted name in fashion. Now, we
               bring the same personal touch and quality commitment to your digital doorstep.
             </p>
           </div>

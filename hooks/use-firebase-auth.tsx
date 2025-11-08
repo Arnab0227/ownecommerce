@@ -51,16 +51,70 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
   }, [user, adminEmail, isAdmin])
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    if (!auth) {
+      console.error("[v0] Firebase auth not initialized - missing environment variables")
+      setLoading(false)
+      return
+    }
+
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       console.log("Auth state changed:", user?.email)
       setUser(user)
       setLoading(false)
+
+      if (user) {
+        await mergeGuestCartWithUserCart(user.uid)
+
+        // Check if user was trying to checkout
+        const checkoutRedirect = localStorage.getItem("checkout-redirect")
+        if (checkoutRedirect === "true") {
+          localStorage.removeItem("checkout-redirect")
+          window.location.href = "/checkout"
+        }
+      }
     })
 
     return unsubscribe
   }, [])
 
+  const mergeGuestCartWithUserCart = async (userId: string) => {
+    try {
+      const guestCart = localStorage.getItem("golden-threads-cart")
+      if (!guestCart) return
+
+      const guestItems = JSON.parse(guestCart)
+      if (guestItems.length === 0) return
+
+      console.log("[v0] Merging guest cart with user cart:", guestItems)
+
+      // Send guest cart items to server to merge with user's cart
+      const response = await fetch("/api/cart/merge", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          userId,
+          guestItems,
+        }),
+      })
+
+      if (response.ok) {
+        console.log("[v0] Cart merged successfully")
+        // Keep the cart in localStorage for immediate use
+        // It will be synced with the database
+      } else {
+        console.error("[v0] Failed to merge cart")
+      }
+    } catch (error) {
+      console.error("[v0] Error merging cart:", error)
+    }
+  }
+
   const signIn = async (email: string, password: string) => {
+    if (!auth) {
+      throw new Error("Firebase auth not initialized. Please configure Firebase environment variables.")
+    }
     try {
       await signInWithEmailAndPassword(auth, email, password)
     } catch (error) {
@@ -70,6 +124,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
   }
 
   const signUp = async (email: string, password: string, name?: string) => {
+    if (!auth) {
+      throw new Error("Firebase auth not initialized. Please configure Firebase environment variables.")
+    }
     try {
       const { user } = await createUserWithEmailAndPassword(auth, email, password)
       if (name && user) {
@@ -82,6 +139,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
   }
 
   const signInWithGoogle = async () => {
+    if (!auth) {
+      throw new Error("Firebase auth not initialized. Please configure Firebase environment variables.")
+    }
     try {
       const provider = new GoogleAuthProvider()
       provider.addScope("email")
@@ -94,6 +154,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
   }
 
   const signInWithFacebook = async () => {
+    if (!auth) {
+      throw new Error("Firebase auth not initialized. Please configure Firebase environment variables.")
+    }
     try {
       const provider = new FacebookAuthProvider()
       provider.addScope("email")
@@ -106,9 +169,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
   }
 
   const signOut = async () => {
+    if (!auth) {
+      throw new Error("Firebase auth not initialized. Please configure Firebase environment variables.")
+    }
     try {
       console.log("[v0] Signing out user, clearing cart...")
       localStorage.removeItem("golden-threads-cart")
+      localStorage.removeItem("checkout-redirect")
+
+      if (user?.uid) {
+        localStorage.removeItem(`addresses_${user.uid}`)
+        console.log("[v0] Cleared user addresses from localStorage")
+      }
+
       // Dispatch cart update event to update UI immediately
       window.dispatchEvent(new CustomEvent("cartUpdated", { detail: { items: [], count: 0 } }))
 

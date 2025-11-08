@@ -20,7 +20,7 @@ export default function HeritagePage() {
               <div>
                 <h2 className="text-3xl font-bold text-gray-900 mb-6">The Beginning - 1989</h2>
                 <p className="text-gray-700 leading-relaxed mb-4">
-                  Golden Threads began as a small boutique with a simple vision: to bring beautiful, quality fashion to
+                  Suktara began as a small boutique with a simple vision: to bring beautiful, quality fashion to
                   families in our community. What started with a handful of carefully selected pieces has grown into a
                   trusted name in premium fashion.
                 </p>
@@ -32,7 +32,8 @@ export default function HeritagePage() {
               <div className="bg-gradient-to-br from-amber-100 to-yellow-100 rounded-2xl p-8">
                 <img
                   src="/the beginning.png"
-                  height="800" width="600"
+                  height="800"
+                  width="600"
                   alt="Heritage store 1989"
                   className="w-full rounded-lg shadow-lg"
                 />
@@ -41,11 +42,7 @@ export default function HeritagePage() {
 
             <div className="grid md:grid-cols-2 gap-12 items-center">
               <div className="order-2 md:order-1 bg-gradient-to-br from-amber-100 to-yellow-100 rounded-2xl p-8">
-                <img
-                  src="/placeholder.svg"
-                  alt="Growing community"
-                  className="w-full rounded-lg shadow-lg"
-                />
+                <img src="/later.png" alt="Growing community" className="w-full rounded-lg shadow-lg" />
               </div>
               <div className="order-1 md:order-2">
                 <h2 className="text-3xl font-bold text-gray-900 mb-6">Building Trust - 1990s-2000s</h2>
@@ -69,13 +66,13 @@ export default function HeritagePage() {
                 </p>
                 <p className="text-gray-700 leading-relaxed">
                   Every piece in our online collection is handpicked with the same expertise and attention to detail
-                  that has made Golden Threads a household name.
+                  that has made Suktara a household name.
                 </p>
               </div>
               <div className="bg-gradient-to-br from-amber-100 to-yellow-100 rounded-2xl p-8">
                 <img
-                  src="/placeholder.svg?height=300&width=400"
-                  alt="Modern Golden Threads"
+                  src="/now.png"
+                  alt="Modern Suktara"
                   className="w-full rounded-lg shadow-lg"
                 />
               </div>
@@ -86,8 +83,7 @@ export default function HeritagePage() {
             <h2 className="text-3xl font-bold text-gray-900 mb-6">Our Promise Continues</h2>
             <p className="text-xl text-gray-700 max-w-3xl mx-auto">
               As we step into the digital age, our commitment remains unchanged: to provide you and your family with the
-              finest fashion, backed by decades of expertise and the personal touch that has defined Golden Threads
-              since 1989.
+              finest fashion, backed by decades of expertise and the personal touch that has defined Suktara since 1989.
             </p>
           </div>
         </div>

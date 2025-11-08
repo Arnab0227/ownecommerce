@@ -1,10 +1,11 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { trackProductView } from "@/lib/analytics"
+import { trackAndCacheProductView } from "@/lib/cache-helpers"
 
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { product_id, view_duration } = body
+    const { product_id, view_duration, session_id } = body
 
     if (!product_id) {
       return NextResponse.json({ error: "Product ID is required" }, { status: 400 })
@@ -24,6 +25,11 @@ export async function POST(request: NextRequest) {
       referrer: referrer || undefined,
       view_duration: view_duration || 0,
     })
+
+    if (success) {
+      const userId = authorization ? "user_auth" : null
+      await trackAndCacheProductView(product_id, userId, session_id || "anonymous")
+    }
 
     if (success) {
       return NextResponse.json({ success: true })

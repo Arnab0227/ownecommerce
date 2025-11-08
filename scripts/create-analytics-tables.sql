@@ -5,9 +5,12 @@ CREATE TABLE IF NOT EXISTS product_views (
     id SERIAL PRIMARY KEY,
     product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
     user_id VARCHAR(255), -- Firebase UID for authenticated users
+    session_id VARCHAR(255) NOT NULL,
     ip_address INET, -- For anonymous tracking
     user_agent TEXT,
     referrer TEXT,
+    viewed_at TIMESTAMP DEFAULT NOW(),
+    FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE CASCADE,
     view_duration INTEGER DEFAULT 0, -- in seconds
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     
@@ -63,6 +66,19 @@ CREATE TABLE IF NOT EXISTS trending_products (
     INDEX idx_trending_products_period (period, period_start),
     INDEX idx_trending_products_score (trending_score DESC),
     INDEX idx_trending_products_rank (rank_position)
+);
+
+CREATE TABLE IF NOT EXISTS contact_queries (
+  id SERIAL PRIMARY KEY,
+  user_id VARCHAR(255),
+  name VARCHAR(255) NOT NULL,
+  email VARCHAR(255) NOT NULL,
+  phone VARCHAR(20),
+  subject VARCHAR(500) NOT NULL,
+  message TEXT NOT NULL,
+  status VARCHAR(20) DEFAULT 'new' CHECK (status IN ('new', 'in_progress', 'resolved', 'closed')),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Table to track email report deliveries
@@ -177,6 +193,12 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Create indexes for better performance
+CREATE INDEX IF NOT EXISTS idx_product_views_product_id ON product_views(product_id);
+CREATE INDEX IF NOT EXISTS idx_product_views_viewed_at ON product_views(viewed_at);
+CREATE INDEX IF NOT EXISTS idx_product_views_user_id ON product_views(user_id);
 CREATE INDEX IF NOT EXISTS idx_products_active ON products(is_active);
 CREATE INDEX IF NOT EXISTS idx_orders_created_at ON orders(created_at);
 CREATE INDEX IF NOT EXISTS idx_order_items_product_id ON order_items(product_id);
+CREATE INDEX IF NOT EXISTS idx_contact_queries_status ON contact_queries(status);
+CREATE INDEX IF NOT EXISTS idx_contact_queries_created_at ON contact_queries(created_at);
+CREATE INDEX IF NOT EXISTS idx_addresses_user_id ON addresses(user_id);

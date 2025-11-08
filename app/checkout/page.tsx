@@ -39,7 +39,7 @@ interface PaymentSettings {
 export default function CheckoutPage() {
   const router = useRouter()
   const { user } = useAuth()
-  const { items, getTotalPrice, clearCart, isLoaded } = useCart() // Added isLoaded from cart hook
+  const { items, getTotalPrice, clearCart, isLoaded } = useCart()
   const { toast } = useToast()
 
   const [loading, setLoading] = useState(false)
@@ -47,11 +47,12 @@ export default function CheckoutPage() {
     razorpay_enabled: false,
     cod_enabled: true,
   })
+  const [razorpayKeyId, setRazorpayKeyId] = useState<string | null>(null)
 
-  // Address state
   const [addresses, setAddresses] = useState<Address[]>([])
   const [selectedAddressId, setSelectedAddressId] = useState("")
   const [showAddressForm, setShowAddressForm] = useState(false)
+  const [editingAddressId, setEditingAddressId] = useState<string | null>(null)
   const [addressForm, setAddressForm] = useState({
     name: "",
     phone: "",
@@ -62,15 +63,11 @@ export default function CheckoutPage() {
     saveAddress: false,
   })
 
-  // Payment state
   const [paymentMethod, setPaymentMethod] = useState("cod")
-
-  // Optional user order note
   const [orderNote, setOrderNote] = useState("")
 
   const totalAmount = getTotalPrice()
-  const shippingFee = totalAmount >= 799 ? 0 : 79
-  const tax = 0
+  const shippingFee = totalAmount >= 699 ? 0 : 70
   const finalAmount = totalAmount + shippingFee
 
   useEffect(() => {
@@ -78,7 +75,7 @@ export default function CheckoutPage() {
       console.log("[v0] Initializing checkout...")
       console.log("[v0] User:", user?.email || "not logged in")
       console.log("[v0] Items count:", items.length)
-      console.log("[v0] Cart loaded:", isLoaded) // Added cart loaded status
+      console.log("[v0] Cart loaded:", isLoaded)
 
       if (!isLoaded) {
         console.log("[v0] Cart still loading, waiting...")
@@ -99,12 +96,13 @@ export default function CheckoutPage() {
 
       console.log("[v0] Checkout initialized successfully")
       loadPaymentSettings()
+      await loadRazorpayPublicKey()
       loadAddresses()
       loadRazorpayScript()
     }
 
     initializeCheckout()
-  }, [user, items.length, isLoaded, router]) // Added isLoaded to dependencies
+  }, [user, items.length, isLoaded, router])
 
   const loadRazorpayScript = () => {
     return new Promise((resolve) => {
@@ -173,6 +171,18 @@ export default function CheckoutPage() {
     }
   }
 
+  const loadRazorpayPublicKey = async () => {
+    try {
+      const res = await fetch("/api/config/razorpay")
+      if (!res.ok) throw new Error("Failed to load Razorpay config")
+      const { enabled, keyId } = await res.json()
+      setRazorpayKeyId(enabled ? keyId : null)
+    } catch (e) {
+      console.error("[v0] Unable to fetch Razorpay key id:", e)
+      setRazorpayKeyId(null)
+    }
+  }
+
   const saveAddress = () => {
     if (
       !addressForm.name ||
@@ -190,18 +200,40 @@ export default function CheckoutPage() {
       return
     }
 
-    const newAddress: Address = {
-      id: Math.floor(Math.random() * 1000000).toString(),
-      ...addressForm,
-      isDefault: addresses.length === 0, // First address is default
-    }
+    if (editingAddressId) {
+      const updatedAddresses = addresses.map((addr) =>
+        addr.id === editingAddressId ? { ...addr, ...addressForm } : addr,
+      )
+      setAddresses(updatedAddresses)
 
-    const updatedAddresses = [...addresses, newAddress]
-    setAddresses(updatedAddresses)
-    setSelectedAddressId(newAddress.id)
+      if (addressForm.saveAddress) {
+        localStorage.setItem(`addresses_${user?.uid}`, JSON.stringify(updatedAddresses))
+      }
 
-    if (addressForm.saveAddress) {
-      localStorage.setItem(`addresses_${user?.uid}`, JSON.stringify(updatedAddresses))
+      toast({
+        title: "Success",
+        description: "Address updated successfully",
+      })
+      setEditingAddressId(null)
+    } else {
+      const newAddress: Address = {
+        id: Math.floor(Math.random() * 1000000).toString(),
+        ...addressForm,
+        isDefault: addresses.length === 0, // First address is default
+      }
+
+      const updatedAddresses = [...addresses, newAddress]
+      setAddresses(updatedAddresses)
+      setSelectedAddressId(newAddress.id)
+
+      if (addressForm.saveAddress) {
+        localStorage.setItem(`addresses_${user?.uid}`, JSON.stringify(updatedAddresses))
+      }
+
+      toast({
+        title: "Success",
+        description: "Address added successfully",
+      })
     }
 
     // Reset form
@@ -215,11 +247,6 @@ export default function CheckoutPage() {
       saveAddress: false,
     })
     setShowAddressForm(false)
-
-    toast({
-      title: "Success",
-      description: "Address added successfully",
-    })
   }
 
   const fetchCityState = async (pincode: string) => {
@@ -247,19 +274,18 @@ export default function CheckoutPage() {
       setLoading(true)
       console.log("[v0] Starting Razorpay payment process...")
 
-      const razorpayKey = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID
-      if (!razorpayKey) {
-        console.error("[v0] Razorpay key not found in environment variables")
+      if (!razorpayKeyId) {
+        console.error("[v0] Razorpay key id unavailable")
         toast({
           title: "Configuration Error",
-          description: "Payment system not configured. Please add NEXT_PUBLIC_RAZORPAY_KEY_ID in Project Settings.",
+          description:
+            "Payment system not configured. Please set RAZORPAY_KEY_ID in Project Settings, then reload this page.",
           variant: "destructive",
         })
         setLoading(false)
         return
       }
 
-      // Check if Razorpay script is loaded
       const scriptLoaded = await loadRazorpayScript()
       if (!scriptLoaded || !window.Razorpay) {
         console.error("[v0] Razorpay script not loaded properly")
@@ -274,17 +300,13 @@ export default function CheckoutPage() {
 
       console.log("[v0] Creating Razorpay order with amount:", finalAmount)
 
-      // Create order with strict INR currency validation
       const orderResponse = await fetch("/api/payments/razorpay/create-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           amount: finalAmount,
-          currency: "INR", // Explicitly set to INR for Indian market
-          notes: {
-            market: "India",
-            currency_enforced: "INR",
-          },
+          currency: "INR",
+          notes: { market: "India", currency_enforced: "INR" },
         }),
       })
 
@@ -304,23 +326,29 @@ export default function CheckoutPage() {
       console.log("[v0] Razorpay order created:", razorpayOrderData)
 
       const databaseOrder = await createOrderInDatabase("pending", razorpayOrderData.id)
+      if (!databaseOrder) {
+        toast({
+          title: "Order Creation Failed",
+          description: "Failed to create order in database. Please try again.",
+          variant: "destructive",
+        })
+        setLoading(false)
+        return
+      }
 
-      // Get selected address for prefill
       const selectedAddress = addresses.find((addr) => addr.id === selectedAddressId)
 
-      // Initialize Razorpay with INR currency enforcement
       const options = {
-        key: razorpayKey,
+        key: razorpayKeyId,
         amount: razorpayOrderData.amount,
-        currency: "INR", // Explicitly enforce INR currency
-        name: "Golden Threads",
-        description: "Order Payment (INR Only)", // Added currency note in description
+        currency: "INR",
+        name: "Suktara", // Updated brand name from Golden Threads to Suktara
+        description: "Order Payment (INR Only)",
         order_id: razorpayOrderData.id,
-        receipt: `receipt_${Math.floor(Math.random() * 1000000)}`, // Using random number instead of Date.now()
+        receipt: `receipt_${Math.floor(Math.random() * 1000000)}`,
         handler: async (response: any) => {
           try {
             console.log("[v0] Payment successful, verifying...")
-            // Verify payment
             const verifyResponse = await fetch("/api/payments/razorpay/verify", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -332,27 +360,29 @@ export default function CheckoutPage() {
             })
 
             if (verifyResponse.ok) {
-              console.log("[v0] Payment verified, updating order status...")
-              await updateOrderStatus(databaseOrder.id, response.razorpay_payment_id)
-
+              console.log("[v0] Payment verified, clearing cart and redirecting...")
               clearCart()
               toast({
                 title: "Payment Successful!",
-                description: `Order #${databaseOrder.id} has been confirmed.`,
+                description: "Order has been placed successfully.",
               })
-              router.push(`/orders`)
+              router.push(`/order-status?orderId=${databaseOrder.id}`)
             } else {
               const errorText = await verifyResponse.text()
               console.error("[v0] Payment verification failed:", errorText)
-              throw new Error("Payment verification failed")
+              toast({
+                title: "Payment Processing",
+                description: "Payment is being verified. Please check your order status.",
+              })
+              router.push(`/order-status?orderId=${databaseOrder.id}`)
             }
           } catch (error) {
             console.error("[v0] Payment verification error:", error)
             toast({
-              title: "Payment Error",
-              description: "Payment verification failed. Please contact support with your payment ID.",
-              variant: "destructive",
+              title: "Payment Processing",
+              description: "Payment is being verified. Please check your order status.",
             })
+            router.push(`/order-status?orderId=${databaseOrder.id}`)
           }
         },
         prefill: {
@@ -361,7 +391,7 @@ export default function CheckoutPage() {
           contact: selectedAddress?.phone || "",
         },
         theme: {
-          color: "#ea580c",
+          color: "#ea580c", // Updated to match Suktara brand colors
         },
         method: {
           card: true,
@@ -379,6 +409,10 @@ export default function CheckoutPage() {
           ondismiss: () => {
             console.log("[v0] Payment modal dismissed by user")
             setLoading(false)
+            toast({
+              title: "Payment Cancelled",
+              description: "You can complete your payment anytime from your orders page.",
+            })
           },
         },
       }
@@ -433,47 +467,33 @@ export default function CheckoutPage() {
         console.log("[v0] Order created in database:", order.id)
         return order
       } else {
-        throw new Error("Failed to create order")
+        const errorData = await response.json().catch(() => ({ error: "Unknown error" }))
+        console.error("[v0] Order creation failed:", errorData)
+        throw new Error(errorData.error || "Failed to create order")
       }
     } catch (error) {
       console.error("Order creation error:", error)
-      throw error
-    }
-  }
-
-  const updateOrderStatus = async (orderId: string, razorpayPaymentId: string) => {
-    try {
-      const response = await fetch(`/api/orders/${orderId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          payment_status: "paid",
-          status: "confirmed",
-          razorpay_payment_id: razorpayPaymentId,
-        }),
+      toast({
+        title: "Order Creation Failed",
+        description: error instanceof Error ? error.message : "Failed to create order",
+        variant: "destructive",
       })
-
-      if (response.ok) {
-        console.log("[v0] Order status updated successfully")
-        return await response.json()
-      } else {
-        throw new Error("Failed to update order status")
-      }
-    } catch (error) {
-      console.error("Order update error:", error)
-      throw error
+      return null
     }
   }
 
   const createOrder = async (paymentStatus: "pending" | "paid") => {
     try {
       const order = await createOrderInDatabase(paymentStatus)
+      if (!order) {
+        return // Error already handled in createOrderInDatabase
+      }
       clearCart()
       toast({
-        title: "Order Placed Successfully!",
-        description: `Order #${order.id} has been placed.`,
+        title: "Success!",
+        description: "Order has been placed successfully.",
       })
-      router.push(`/orders`)
+      router.push(`/order-status?orderId=${order.id}`)
     } catch (error) {
       console.error("Order creation error:", error)
       toast({
@@ -487,20 +507,26 @@ export default function CheckoutPage() {
   const handlePlaceOrder = async () => {
     console.log("[v0] Place order clicked, payment method:", paymentMethod)
     console.log("[v0] Payment settings:", paymentSettings)
-    console.log("[v0] Razorpay enabled:", paymentSettings.razorpay_enabled)
     console.log("[v0] COD enabled:", paymentSettings.cod_enabled)
+    console.log("[v0] Razorpay key loaded:", Boolean(razorpayKeyId))
     console.log("[v0] Selected address ID:", selectedAddressId)
     console.log("[v0] Items in cart:", items.length)
     console.log("[v0] Final amount:", finalAmount)
-    console.log("[v0] Environment check:")
-    console.log("[v0] - NEXT_PUBLIC_RAZORPAY_KEY_ID:", process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ? "SET" : "NOT SET")
-    console.log("[v0] - Window.Razorpay available:", typeof window !== "undefined" && window.Razorpay ? "YES" : "NO")
 
     if (!selectedAddressId) {
       console.log("[v0] No address selected")
       toast({
         title: "Error",
         description: "Please select a delivery address",
+        variant: "destructive",
+      })
+      return
+    }
+
+    if (finalAmount <= 0) {
+      toast({
+        title: "Invalid Order",
+        description: "Order amount must be greater than zero.",
         variant: "destructive",
       })
       return
@@ -517,11 +543,11 @@ export default function CheckoutPage() {
         return
       }
 
-      if (!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID) {
-        console.error("[v0] NEXT_PUBLIC_RAZORPAY_KEY_ID not found in environment")
+      if (!razorpayKeyId) {
         toast({
           title: "Configuration Error",
-          description: "Payment system not configured. Please add NEXT_PUBLIC_RAZORPAY_KEY_ID in Project Settings.",
+          description:
+            "Payment system not configured. Please set RAZORPAY_KEY_ID in Project Settings, then reload this page.",
           variant: "destructive",
         })
         return
@@ -553,6 +579,34 @@ export default function CheckoutPage() {
     }
   }
 
+  const editAddress = (address: Address) => {
+    setAddressForm({
+      name: address.name,
+      phone: address.phone,
+      address: address.address,
+      city: address.city,
+      state: address.state,
+      pincode: address.pincode,
+      saveAddress: false,
+    })
+    setEditingAddressId(address.id)
+    setShowAddressForm(true)
+  }
+
+  const setDefaultAddress = (addressId: string) => {
+    const updatedAddresses = addresses.map((addr) => ({
+      ...addr,
+      isDefault: addr.id === addressId,
+    }))
+    setAddresses(updatedAddresses)
+    localStorage.setItem(`addresses_${user?.uid}`, JSON.stringify(updatedAddresses))
+
+    toast({
+      title: "Success",
+      description: "Default address updated",
+    })
+  }
+
   if (!isLoaded) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -570,22 +624,20 @@ export default function CheckoutPage() {
         <div className="max-w-4xl mx-auto">
           <h1 className="text-3xl font-bold text-gray-900 mb-8">Checkout</h1>
 
-          {!process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID && (
+          {!razorpayKeyId && (
             <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
               <div className="flex items-center gap-2">
                 <AlertCircle className="h-5 w-5 text-yellow-600" />
                 <div className="text-sm text-yellow-800">
-                  <strong>Configuration Required:</strong> Add NEXT_PUBLIC_RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in
-                  Project Settings to enable Razorpay payments.
+                  <strong>Configuration Required:</strong> Add RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in Project
+                  Settings to enable Razorpay payments.
                 </div>
               </div>
             </div>
           )}
 
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Left Column - Address & Payment */}
             <div className="lg:col-span-2 space-y-6">
-              {/* Delivery Address */}
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -611,6 +663,26 @@ export default function CheckoutPage() {
                               )}
                             </Label>
                           </div>
+                          <div className="flex flex-col gap-1">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => editAddress(address)}
+                              className="text-xs px-2 py-1"
+                            >
+                              Edit
+                            </Button>
+                            {!address.isDefault && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setDefaultAddress(address.id)}
+                                className="text-xs px-2 py-1"
+                              >
+                                Set Default
+                              </Button>
+                            )}
+                          </div>
                         </div>
                       ))}
                     </RadioGroup>
@@ -623,6 +695,8 @@ export default function CheckoutPage() {
                     </Button>
                   ) : (
                     <div className="space-y-4 p-4 border rounded-lg bg-gray-50">
+                      <h3 className="font-medium">{editingAddressId ? "Edit Address" : "Add New Address"}</h3>
+
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div>
                           <Label htmlFor="name">Full Name</Label>
@@ -737,16 +811,30 @@ export default function CheckoutPage() {
 
                       <div className="flex gap-2">
                         <Button onClick={saveAddress} className="flex-1">
-                          Save Address
+                          {editingAddressId ? "Update Address" : "Save Address"}
                         </Button>
-                        <Button variant="outline" onClick={() => setShowAddressForm(false)}>
+                        <Button
+                          variant="outline"
+                          onClick={() => {
+                            setShowAddressForm(false)
+                            setEditingAddressId(null)
+                            setAddressForm({
+                              name: "",
+                              phone: "",
+                              address: "",
+                              city: "",
+                              state: "",
+                              pincode: "",
+                              saveAddress: false,
+                            })
+                          }}
+                        >
                           Cancel
                         </Button>
                       </div>
                     </div>
                   )}
 
-                  {/* Optional Order Notes */}
                   <div className="space-y-2">
                     <Label htmlFor="order_note">Order Notes (optional)</Label>
                     <textarea
@@ -761,7 +849,6 @@ export default function CheckoutPage() {
                 </CardContent>
               </Card>
 
-              {/* Payment Method */}
               <Card>
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2">
@@ -812,14 +899,12 @@ export default function CheckoutPage() {
               </Card>
             </div>
 
-            {/* Right Column - Order Summary */}
             <div>
               <Card className="sticky top-4">
                 <CardHeader>
                   <CardTitle>Order Summary</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                  {/* Items */}
                   <div className="space-y-3">
                     {items.map((item) => (
                       <div key={item.id} className="flex justify-between items-center">
@@ -869,9 +954,9 @@ export default function CheckoutPage() {
                     )}
                   </Button>
 
-                  {totalAmount < 799 && (
+                  {totalAmount < 699 && (
                     <div className="text-xs text-center text-gray-600">
-                      Add ₹{(799 - totalAmount).toLocaleString("en-IN")} more for free shipping
+                      Add ₹{(699 - totalAmount).toLocaleString("en-IN")} more for free shipping
                     </div>
                   )}
                 </CardContent>

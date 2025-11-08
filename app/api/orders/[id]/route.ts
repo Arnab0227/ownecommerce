@@ -3,23 +3,31 @@ import { neon } from "@neondatabase/serverless"
 
 const sql = neon(process.env.DATABASE_URL!)
 
-export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const orderId = params.id
+    const { id: orderId } = await params
     const body = await request.json()
 
     console.log("[v0] Updating order:", orderId, "with data:", body)
 
     const currentOrder = await sql`
-      SELECT status, payment_status FROM orders WHERE id = ${orderId}
+      SELECT status, payment_status, user_id, total_amount, order_number FROM orders WHERE id = ${orderId}
     `
     if (currentOrder.length === 0) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 })
     }
     const oldStatus = currentOrder[0].status
 
-    if (body.status === "shipped" && (!body.tracking_number || String(body.tracking_number).trim() === "")) {
-      return NextResponse.json({ error: "Tracking number is required to mark order as shipped" }, { status: 400 })
+    if (body.status === "shipped") {
+      if (!body.tracking_number || String(body.tracking_number).trim() === "") {
+        return NextResponse.json({ error: "Tracking number is required to mark order as shipped" }, { status: 400 })
+      }
+      if (!body.tracking_url || String(body.tracking_url).trim() === "") {
+        return NextResponse.json(
+          { error: "Tracking website link is required to mark order as shipped" },
+          { status: 400 },
+        )
+      }
     }
 
     const updateFields: string[] = []
@@ -49,6 +57,11 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     if (body.tracking_number !== undefined) {
       updateFields.push(`tracking_number = $${paramIndex}`)
       values.push(body.tracking_number)
+      paramIndex++
+    }
+    if (body.tracking_url !== undefined) {
+      updateFields.push(`tracking_url = $${paramIndex}`)
+      values.push(body.tracking_url)
       paramIndex++
     }
     if (body.admin_notes !== undefined) {
@@ -91,27 +104,40 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     `
 
     for (const item of orderItems) {
-      // If order is confirmed and wasn't before, reduce stock
       if (body.status === "confirmed" && oldStatus !== "confirmed") {
         await sql`
           UPDATE products
           SET stock_quantity = GREATEST(0, stock_quantity - ${item.quantity})
           WHERE id = ${item.product_id}
         `
-      }
-      // If order is cancelled and was confirmed before, restore stock
-      else if (body.status === "cancelled" && oldStatus === "confirmed") {
+      } else if (body.status === "cancelled" && oldStatus === "confirmed") {
         await sql`
           UPDATE products
           SET stock_quantity = stock_quantity + ${item.quantity}
           WHERE id = ${item.product_id}
         `
+        console.log(`[v0] Restored ${item.quantity} units to product ${item.product_id} due to order cancellation`)
+      }
+    }
+
+    if (body.status === "confirmed" && oldStatus !== "confirmed") {
+      try {
+        await awardLoyaltyPoints(
+          sql,
+          currentOrder[0].user_id,
+          currentOrder[0].total_amount,
+          orderId,
+          currentOrder[0].order_number,
+        )
+      } catch (loyaltyError) {
+        console.error("Failed to award loyalty points:", loyaltyError)
+        // Don't fail the order update if loyalty points fail
       }
     }
 
     if (body.send_notification) {
       try {
-        await sendOrderNotification(updatedOrder, body.status || oldStatus)
+        await sendOrderNotification(updatedOrder, body.status || oldStatus, body.tracking_url)
       } catch (notificationError) {
         console.error("[v0] Failed to send notification:", notificationError)
       }
@@ -125,9 +151,9 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   }
 }
 
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
-    const orderId = params.id
+    const { id: orderId } = await params
 
     const result = await sql`
       SELECT o.*, 
@@ -163,48 +189,40 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
   }
 }
 
-async function sendOrderNotification(order: any, status: string) {
+async function sendOrderNotification(order: any, status: string, trackingUrl?: string) {
   try {
     const notificationData = {
       orderId: order.id,
-      // fallback to order.email when user_email missing
       userEmail: order.user_email || order.email,
       status: status,
       trackingNumber: order.tracking_number,
+      trackingUrl: trackingUrl,
       totalAmount: order.total_amount,
     }
-    // Send email notification
-    const emailResponse = await fetch(
-      `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/api/notifications/email`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: "order_status_update",
-          data: notificationData,
-        }),
-      },
-    )
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"
 
+    const emailResponse = await fetch(`${baseUrl}/api/notifications/email`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "order_status_update",
+        data: notificationData,
+      }),
+    })
     if (!emailResponse.ok) {
       console.error("[v0] Email notification failed:", await emailResponse.text())
     }
 
-    // Send WhatsApp notification if phone number available
     if (order.shipping_address?.phone) {
-      const whatsappResponse = await fetch(
-        `${process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"}/api/notifications/whatsapp`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            type: "order_status_update",
-            phone: order.shipping_address.phone,
-            data: notificationData,
-          }),
-        },
-      )
-
+      const whatsappResponse = await fetch(`${baseUrl}/api/notifications/whatsapp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "order_status_update",
+          phone: order.shipping_address.phone,
+          data: notificationData,
+        }),
+      })
       if (!whatsappResponse.ok) {
         console.error("[v0] WhatsApp notification failed:", await whatsappResponse.text())
       }
@@ -213,4 +231,51 @@ async function sendOrderNotification(order: any, status: string) {
     console.error("[v0] Notification error:", error)
     throw error
   }
+}
+
+async function awardLoyaltyPoints(sql: any, userId: string, orderAmount: number, orderId: string, orderNumber: string) {
+  // Calculate points: 2% of order amount (1 point per ₹50)
+  const pointsEarned = Math.round(orderAmount * 0.02)
+
+  if (pointsEarned <= 0) return
+
+  // Get or create loyalty record
+  const loyaltyRecord = await sql`
+    SELECT * FROM loyalty_points WHERE user_id = ${userId}
+  `
+
+  if (loyaltyRecord.length === 0) {
+    // Create new loyalty record
+    await sql`
+      INSERT INTO loyalty_points (user_id, current_points, total_earned, tier)
+      VALUES (${userId}, ${pointsEarned}, ${pointsEarned}, 'Bronze')
+    `
+  } else {
+    // Update existing record
+    const newCurrentPoints = loyaltyRecord[0].current_points + pointsEarned
+    const newTotalEarned = loyaltyRecord[0].total_earned + pointsEarned
+
+    // Determine new tier based on total earned
+    let newTier = "Bronze"
+    if (newTotalEarned >= 5000) newTier = "Platinum"
+    else if (newTotalEarned >= 2500) newTier = "Gold"
+    else if (newTotalEarned >= 1000) newTier = "Silver"
+
+    await sql`
+      UPDATE loyalty_points 
+      SET current_points = ${newCurrentPoints},
+          total_earned = ${newTotalEarned},
+          tier = ${newTier},
+          updated_at = CURRENT_TIMESTAMP
+      WHERE user_id = ${userId}
+    `
+  }
+
+  // Create transaction record
+  await sql`
+    INSERT INTO loyalty_transactions (user_id, type, points, description, order_id)
+    VALUES (${userId}, 'earned', ${pointsEarned}, 'Points earned from order #${orderNumber}', ${orderId})
+  `
+
+  console.log(`[v0] Awarded ${pointsEarned} loyalty points to user ${userId} for order ${orderNumber}`)
 }

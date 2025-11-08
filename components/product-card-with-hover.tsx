@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
@@ -21,6 +21,26 @@ export function ProductCardWithHover({ product }: ProductCardWithHoverProps) {
   const [isHovered, setIsHovered] = useState(false)
   const [currentImageIndex, setCurrentImageIndex] = useState(0)
   const { addItem } = useCart()
+
+  useEffect(() => {
+    const trackView = async () => {
+      try {
+        const sessionId = getOrCreateSessionId()
+        await fetch("/api/analytics/track-view", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            product_id: product.id,
+            session_id: sessionId,
+          }),
+        })
+      } catch (error) {
+        console.error("[v0] Error tracking product view:", error)
+      }
+    }
+
+    trackView()
+  }, [product.id])
 
   // Mock multiple images for demo
   const productImages = [
@@ -254,4 +274,15 @@ export function ProductCardWithHover({ product }: ProductCardWithHoverProps) {
       )}
     </>
   )
+}
+
+function getOrCreateSessionId(): string {
+  if (typeof window === "undefined") return "server"
+
+  let sessionId = sessionStorage.getItem("sessionId")
+  if (!sessionId) {
+    sessionId = `session_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`
+    sessionStorage.setItem("sessionId", sessionId)
+  }
+  return sessionId
 }

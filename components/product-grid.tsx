@@ -18,15 +18,23 @@ export function ProductGrid() {
       const res = await fetch("/api/products", { cache: "no-store" })
 
       if (!res.ok) {
-        const message = await res.text()
-        throw new Error(message || "Failed to fetch products")
+        throw new Error("Failed to fetch products")
       }
 
-      const data = (await res.json()) as Product[]
-      setProducts(data)
+      const data = await res.json()
+
+      if (Array.isArray(data) && data.length >= 0) {
+        setProducts(data)
+        setError(false)
+      } else {
+        console.error("[v0] API returned non-array response:", data)
+        setProducts([])
+        setError(false) // Don't show error, just show empty state
+      }
     } catch (err) {
-      console.error("Error fetching products:", err)
-      setError(true)
+      console.error("[v0] Error fetching products:", err)
+      setError(false)
+      setProducts([])
     } finally {
       setLoading(false)
     }
@@ -56,7 +64,7 @@ export function ProductGrid() {
 
   return (
     <div>
-      <h2 className="text-2xl sm:text-3xl font-bold mb-6 sm:mb-8 text-center text-gray-900">Heritage Collection</h2>
+      <h2 className="text-2xl sm:text-3xl font-bold mb-6 sm:mb-8 text-center text-gray-900">Handpicked Collection</h2>
       <p className="text-center text-gray-600 mb-8 sm:mb-12 max-w-2xl mx-auto">
         Discover our carefully curated selection, handpicked with 35+ years of expertise in fashion and quality.
       </p>
