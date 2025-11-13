@@ -13,11 +13,20 @@ export async function cacheRecentlyViewed(
     const key = userId ? cacheKeys.recentlyViewed(userId) : cacheKeys.sessionRecentlyViewed(sessionId!)
 
     // Get existing recently viewed list
-    const existing = (await redis.get<(number | string)[]>(key)) || []
+    let existing = await redis.get<(number | string)[]>(key)
+
+    // Ensure existing is always an array
+    if (!existing || !Array.isArray(existing)) {
+      existing = []
+    }
 
     // Remove if already in list and add to front (most recent)
-    const updated = [productId, ...existing.filter((id) => id !== productId)].slice(0, 20)
+    const numericProductId = Number(productId)
+    const filtered = existing.map((id) => Number(id)).filter((id) => id !== numericProductId)
 
+    const updated = [numericProductId, ...filtered].slice(0, 20)
+
+    console.log("[v0] Caching recently viewed:", { key, updated, productId: numericProductId })
     await redis.set(key, updated, cacheTTL.veryLong)
   } catch (error) {
     console.error("[Cache] Error caching recently viewed:", error)
@@ -25,13 +34,57 @@ export async function cacheRecentlyViewed(
 }
 
 // Get recently viewed items
-export async function getRecentlyViewed(userId: string | null, sessionId: string | null): Promise<(number | string)[]> {
+export async function getRecentlyViewed(userId: string | null, sessionId: string | null): Promise<number[]> {
   if (!userId && !sessionId) return []
 
   try {
     const key = userId ? cacheKeys.recentlyViewed(userId) : cacheKeys.sessionRecentlyViewed(sessionId!)
-    const items = await redis.get<(number | string)[]>(key)
-    return items || []
+    const items = await redis.get<any>(key)
+
+    console.log("[v0] Retrieved from Redis:", { key, items, type: typeof items, isArray: Array.isArray(items) })
+
+    if (!items) {
+      console.log("[v0] No items found in Redis for key:", key)
+      return []
+    }
+
+    let parsedArray: any[] = []
+
+    if (Array.isArray(items)) {
+      parsedArray = items
+    } else if (typeof items === "string") {
+      try {
+        // First parse to get the JSON object
+        let parsed = JSON.parse(items)
+
+        // If the parsed result is a string (double-encoded), parse again
+        if (typeof parsed === "string") {
+          parsed = JSON.parse(parsed)
+        }
+
+        parsedArray = Array.isArray(parsed) ? parsed : []
+      } catch (parseError) {
+        console.error("[v0] Failed to parse string items:", parseError)
+        return []
+      }
+    } else if (typeof items === "object" && "value" in items) {
+      // Fallback for wrapped responses
+      const valueStr = (items as { value: string; ex: number }).value
+      try {
+        let parsed = JSON.parse(valueStr)
+        if (typeof parsed === "string") {
+          parsed = JSON.parse(parsed)
+        }
+        parsedArray = Array.isArray(parsed) ? parsed : []
+      } catch (parseError) {
+        console.error("[v0] Failed to parse value:", parseError)
+        return []
+      }
+    }
+
+    const numericItems = Array.isArray(parsedArray) ? parsedArray.map((id) => Number(id)) : []
+    console.log("[v0] Final parsed array:", numericItems)
+    return numericItems
   } catch (error) {
     console.error("[Cache] Error getting recently viewed:", error)
     return []

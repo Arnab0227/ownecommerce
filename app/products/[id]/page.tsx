@@ -15,6 +15,7 @@ import { toast } from "@/hooks/use-toast"
 import { ReviewList } from "@/components/reviews/review-list"
 import { ReviewForm } from "@/components/reviews/review-form"
 import { ReviewSummary } from "@/components/reviews/review-summary"
+import { BuyItAgain } from "@/components/buy-it-again"
 import { RecentlyViewed } from "@/components/recently-viewed"
 
 export default function ProductPage() {
@@ -66,15 +67,22 @@ export default function ProductPage() {
         sessionStorage.setItem("sessionId", sessionId)
       }
 
-      await fetch("/api/recently-viewed", {
+      console.log("[v0] Adding to recently viewed:", productId, "userId:", user?.uid, "sessionId:", sessionId)
+      const response = await fetch("/api/recently-viewed", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          productId,
+          productId: Number(productId),
           userId: user?.uid,
           sessionId,
         }),
       })
+
+      const data = await response.json()
+      console.log("[v0] Recently viewed response:", data)
+
+      window.dispatchEvent(new Event("product-viewed"))
+      window.dispatchEvent(new Event("storage"))
     } catch (error) {
       console.error("[v0] Error adding to recently viewed:", error)
     }
@@ -115,6 +123,17 @@ export default function ProductPage() {
     if (product) {
       console.log("ProductPage: Buy now - adding to cart:", product, "quantity:", quantity)
       addItem(product, quantity)
+      if (!user) {
+        const { addPurchase } = require("@/lib/local-storage-purchases")
+        addPurchase({
+          id: product.id,
+          name: product.name,
+          price: product.price,
+          original_price: product.original_price,
+          imageUrl: product.imageUrl,
+          category: product.category,
+        })
+      }
       router.push("/cart")
     }
   }
@@ -275,8 +294,14 @@ export default function ProductPage() {
 
       <Separator className="my-8" />
 
+      <div className="mb-8">
+            <RecentlyViewed />
+          </div>
+
+      <Separator className="my-8" />
+      
       <div className="mb-12">
-        <RecentlyViewed />
+        <BuyItAgain />
       </div>
 
       <Separator className="my-8" />
@@ -289,8 +314,8 @@ export default function ProductPage() {
 
         <TabsContent value="reviews" className="mt-6">
           <div className="space-y-6">
-            <ReviewSummary productId={Number(product.id)} key={refreshReviews} />
-            <ReviewList productId={Number(product.id)} key={refreshReviews} />
+            <ReviewSummary productId={Number(product.id)} refreshTrigger={refreshReviews} />
+            <ReviewList productId={Number(product.id)} refreshTrigger={refreshReviews} />
           </div>
         </TabsContent>
 

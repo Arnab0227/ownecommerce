@@ -29,23 +29,69 @@ export async function GET(request: NextRequest) {
         orderClause = "ORDER BY r.created_at DESC"
     }
 
+    const parsedProductId = Number.parseInt(productId)
+    console.log(`[v0] Fetching reviews for productId: ${parsedProductId}`)
+
     const reviews = await sql`
       SELECT 
-        r.*,
-        u.name as user_name,
+        r.id,
+        r.product_id,
+        r.user_id,
+        r.rating,
+        r.title,
+        r.comment,
+        r.is_verified,
+        r.helpful_count,
+        r.created_at,
+        COALESCE(u.name, u.email, 'Anonymous User') as user_name,
         COALESCE(
-          (SELECT json_agg(ri.image_url) 
+          (SELECT json_agg(ri.image_url ORDER BY ri.id) 
            FROM review_images ri 
-           WHERE ri.review_id = r.id), 
+           WHERE ri.review_id = r.id AND ri.image_url IS NOT NULL), 
           '[]'::json
         ) as images
       FROM reviews r
       LEFT JOIN users u ON r.user_id = u.firebase_uid
-      WHERE r.product_id = ${Number.parseInt(productId)}
+      WHERE r.product_id = ${parsedProductId}
       ${sql.unsafe(orderClause)}
     `
 
-    return NextResponse.json({ reviews })
+    console.log(
+      `[v0] Raw reviews from DB:`,
+      reviews.map((r: any) => ({ id: r.id, user_name: r.user_name, user_id: r.user_id, images: r.images })),
+    )
+
+    const processedReviews = reviews.map((review: any) => {
+      // Parse images array if it exists
+      let images: string[] = []
+      if (review.images && Array.isArray(review.images)) {
+        images = review.images.filter((img: string | null) => img !== null && img.trim() !== "")
+      } else if (review.images) {
+        try {
+          const parsed = JSON.parse(review.images)
+          images = Array.isArray(parsed) ? parsed.filter((img: string | null) => img !== null && img.trim() !== "") : []
+        } catch {
+          images = []
+        }
+      }
+
+      const userName = review.user_name || "Anonymous User"
+
+      console.log(`[v0] Processed review ${review.id}:`, { user_name: userName, image_count: images.length })
+
+      return {
+        ...review,
+        images,
+        user_name: userName,
+      }
+    })
+
+    console.log(`[v0] Retrieved ${processedReviews.length} reviews for productId: ${parsedProductId}`)
+    console.log(
+      `[v0] Review data:`,
+      processedReviews.map((r: any) => ({ id: r.id, user_name: r.user_name, images: r.images })),
+    )
+    return NextResponse.json({ reviews: processedReviews })
   } catch (error) {
     console.error("Error fetching reviews:", error)
     return NextResponse.json({ error: "Failed to fetch reviews" }, { status: 500 })
@@ -61,6 +107,15 @@ export async function POST(request: NextRequest) {
     }
 
     const user = authResult.user!
+    console.log(`[v0] Auth user object:`, {
+      uid: user.uid,
+      email: user.email,
+      name: user.name,
+      displayName: (user as any).displayName,
+    })
+    const userName = user.name || (user as any).displayName || user.email?.split("@")[0] || "Anonymous User"
+    console.log(`[v0] Extracted userName: "${userName}"`)
+
     const formData = await request.formData()
 
     const productId = Number.parseInt(formData.get("productId") as string)
@@ -101,7 +156,21 @@ export async function POST(request: NextRequest) {
     const isVerified = purchaseCheck.length > 0
     const orderId = isVerified ? purchaseCheck[0].order_id : null
 
-    // Insert the review
+    const upsertResult = await sql`
+      INSERT INTO users (firebase_uid, email, name)
+      VALUES (${user.uid}, ${user.email}, ${userName})
+      ON CONFLICT (firebase_uid) DO UPDATE SET 
+        name = CASE 
+          WHEN ${userName} != '' THEN ${userName}
+          ELSE users.name
+        END,
+        email = COALESCE(${user.email}, users.email),
+        updated_at = NOW()
+      RETURNING firebase_uid, name, email
+    `
+
+    console.log(`[v0] User upserted:`, upsertResult[0])
+
     const reviewResult = await sql`
       INSERT INTO reviews (product_id, user_id, order_id, rating, title, comment, is_verified)
       VALUES (${productId}, ${user.uid}, ${orderId}, ${rating}, ${title}, ${comment}, ${isVerified})
@@ -109,30 +178,39 @@ export async function POST(request: NextRequest) {
     `
 
     const reviewId = reviewResult[0].id
+    console.log(`[v0] Review created with ID: ${reviewId} for productId: ${productId}`)
 
     // Handle image uploads
     const imageUrls: string[] = []
     const imageEntries = Array.from(formData.entries()).filter(([key]) => key.startsWith("image_"))
+    console.log(`[v0] Found ${imageEntries.length} image entries to process`)
 
     for (const [key, file] of imageEntries) {
       if (file instanceof File && file.size > 0) {
         try {
-          // In a real implementation, you would upload to a cloud storage service
-          // For now, we'll simulate the upload and store a placeholder URL
-          const imageUrl = `/uploads/reviews/${reviewId}/${file.name}`
-          imageUrls.push(imageUrl)
+          const buffer = await file.arrayBuffer()
+          const base64 = Buffer.from(buffer).toString("base64")
+          const mimeType = file.type || "image/jpeg"
+          const imageUrl = `data:${mimeType};base64,${base64}`
 
-          // Insert image record
-          await sql`
+          const insertResult = await sql`
             INSERT INTO review_images (review_id, image_url, alt_text)
             VALUES (${reviewId}, ${imageUrl}, ${`Review image for ${title}`})
+            RETURNING id
           `
+          console.log(`[v0] Added image for review ${reviewId}, image record id: ${insertResult[0].id}`)
+          imageUrls.push(imageUrl)
         } catch (uploadError) {
           console.error("Error uploading image:", uploadError)
-          // Continue with other images even if one fails
         }
       }
     }
+
+    const verifyImages = await sql`
+      SELECT image_url FROM review_images 
+      WHERE review_id = ${reviewId}
+    `
+    console.log(`[v0] Verified ${verifyImages.length} images stored for review ${reviewId}`)
 
     return NextResponse.json({
       message: "Review submitted successfully",

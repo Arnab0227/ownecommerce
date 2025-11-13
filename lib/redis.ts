@@ -95,22 +95,29 @@ export class RedisCache {
         },
       })
 
-      if (!response.ok) return null
+      if (!response.ok) {
+        console.log(`[Redis] GET ${key} returned status ${response.status}`)
+        return null
+      }
+
       const data = await response.json()
+      console.log(`[Redis] Raw response for ${key}:`, { data, resultType: typeof data?.result })
 
       // The Upstash REST API returns { result: <value> } where value is a string
-      if (!data || data.result === null || data.result === undefined) return null
+      if (!data || data.result === null || data.result === undefined) {
+        console.log(`[Redis] No result in response for ${key}`)
+        return null
+      }
 
       // If result is a string, try to parse as JSON
       if (typeof data.result === "string") {
+        console.log(`[Redis] Parsing string result for ${key}:`, data.result.substring(0, 100))
         try {
           const parsed = JSON.parse(data.result) as T
-          if (Array.isArray(parsed) || typeof parsed === "object") {
-            return parsed
-          }
-          return null
-        } catch {
-          // If JSON parsing fails, return null
+          console.log(`[Redis] Successfully parsed ${key}:`, { parsed, isArray: Array.isArray(parsed) })
+          return parsed
+        } catch (parseError) {
+          console.error(`[Redis] Failed to parse JSON for ${key}:`, parseError, "Raw value:", data.result)
           return null
         }
       }
@@ -118,11 +125,14 @@ export class RedisCache {
       // If result is already an object, validate it's not an error response
       if (typeof data.result === "object" && data.result !== null) {
         if (data.result.error) {
+          console.log(`[Redis] Error in result for ${key}:`, data.result.error)
           return null
         }
+        console.log(`[Redis] Returning object result for ${key}`)
         return data.result as T
       }
 
+      console.log(`[Redis] Unexpected result type for ${key}:`, typeof data.result)
       return null
     } catch (error) {
       console.error(`[Redis] Error getting key ${key}:`, error)
@@ -134,16 +144,13 @@ export class RedisCache {
   async set(key: string, value: any, ttl: number = cacheTTL.medium): Promise<boolean> {
     if (!this.isAvailable) return false
     try {
-      const response = await fetch(`${process.env.KV_REST_API_URL}/set/${key}`, {
+      const response = await fetch(`${process.env.KV_REST_API_URL}/set/${key}?ex=${ttl}`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${process.env.KV_REST_API_TOKEN}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({
-          value: JSON.stringify(value),
-          ex: ttl,
-        }),
+        body: JSON.stringify(value),
       })
 
       return response.ok

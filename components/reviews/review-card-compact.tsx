@@ -90,13 +90,18 @@ export function ReviewCardCompact({ review, showProductInfo, productName, produc
             <div className="flex space-x-1">
               {review.images.slice(0, 3).map((imageUrl, index) => (
                 <div key={index} className="w-8 h-8 rounded overflow-hidden bg-gray-100">
-                  <Image
-                    src={imageUrl || "/placeholder.svg"}
-                    alt={`Review image ${index + 1}`}
-                    width={32}
-                    height={32}
-                    className="w-full h-full object-cover"
-                  />
+                  {imageUrl ? (
+                    <Image
+                      src={imageUrl || "/placeholder.svg"}
+                      alt={`Review image ${index + 1}`}
+                      width={32}
+                      height={32}
+                      className="w-full h-full object-cover"
+                      unoptimized={imageUrl.startsWith("data:")}
+                    />
+                  ) : (
+                    <div className="w-full h-full bg-gray-200" />
+                  )}
                 </div>
               ))}
               {review.images.length > 3 && (

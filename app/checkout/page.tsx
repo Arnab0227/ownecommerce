@@ -13,6 +13,7 @@ import { useCart } from "@/hooks/use-cart"
 import { useAuth } from "@/hooks/use-firebase-auth"
 import { useToast } from "@/hooks/use-toast"
 import { Loader2, MapPin, CreditCard, Truck, Shield, Plus, AlertCircle } from "lucide-react"
+import { addPurchase } from "@/lib/local-storage-purchases"
 
 declare global {
   interface Window {
@@ -361,6 +362,18 @@ export default function CheckoutPage() {
 
             if (verifyResponse.ok) {
               console.log("[v0] Payment verified, clearing cart and redirecting...")
+              if (!user) {
+                items.forEach((item) => {
+                  addPurchase({
+                    id: item.id,
+                    name: item.name,
+                    price: item.price,
+                    original_price: item.original_price,
+                    imageUrl: item.imageUrl,
+                    category: item.category,
+                  })
+                })
+              }
               clearCart()
               toast({
                 title: "Payment Successful!",
@@ -487,6 +500,18 @@ export default function CheckoutPage() {
       const order = await createOrderInDatabase(paymentStatus)
       if (!order) {
         return // Error already handled in createOrderInDatabase
+      }
+      if (!user) {
+        items.forEach((item) => {
+          addPurchase({
+            id: item.id,
+            name: item.name,
+            price: item.price,
+            original_price: item.original_price,
+            imageUrl: item.imageUrl,
+            category: item.category,
+          })
+        })
       }
       clearCart()
       toast({

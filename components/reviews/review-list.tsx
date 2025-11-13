@@ -2,9 +2,8 @@
 
 import { useState, useEffect } from "react"
 import { Card, CardContent } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Star, ThumbsUp, User, Verified, Calendar, ImageIcon } from "lucide-react"
+import { Star, User, Verified, Calendar, ImageIcon } from "lucide-react"
 import Image from "next/image"
 import { format } from "date-fns"
 
@@ -33,6 +32,7 @@ export function ReviewList({ productId, refreshTrigger }: ReviewListProps) {
   const [expandedImages, setExpandedImages] = useState<{ [key: string]: boolean }>({})
 
   useEffect(() => {
+    setLoading(true)
     fetchReviews()
   }, [productId, refreshTrigger, sortBy])
 
@@ -44,7 +44,7 @@ export function ReviewList({ productId, refreshTrigger }: ReviewListProps) {
         const list: Review[] = data.reviews || []
         console.log(
           "[v0] ReviewList fetched reviews:",
-          list.map((r) => ({ id: r.id, rating: r.rating })),
+          list.map((r) => ({ id: r.id, rating: r.rating, user_name: r.user_name })),
         )
         setReviews(list)
       }
@@ -52,23 +52,6 @@ export function ReviewList({ productId, refreshTrigger }: ReviewListProps) {
       console.error("Error fetching reviews:", error)
     } finally {
       setLoading(false)
-    }
-  }
-
-  const handleHelpful = async (reviewId: number) => {
-    try {
-      const response = await fetch(`/api/reviews/${reviewId}/helpful`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("authToken")}`,
-        },
-      })
-
-      if (response.ok) {
-        fetchReviews()
-      }
-    } catch (error) {
-      console.error("Error marking review as helpful:", error)
     }
   }
 
@@ -80,15 +63,17 @@ export function ReviewList({ productId, refreshTrigger }: ReviewListProps) {
   }
 
   const makeReviewKey = (r: Review, idx: number) => {
-    const idPart = r?.id !== undefined && r?.id !== null ? String(r.id) : "noid"
-    return `review-${productId}-${idPart}-${idx}`
+    if (r?.id !== undefined && r?.id !== null) {
+      return `review-${productId}-${r.id}`
+    }
+    return `review-${productId}-unknown-${idx}`
   }
 
   if (loading) {
     return (
       <div className="space-y-4">
         {Array.from({ length: 3 }).map((_, i) => (
-          <Card key={`review-loading-skeleton-${i}`} className="animate-pulse">
+          <Card key={`review-loading-skeleton-${productId}-${i}`} className="animate-pulse">
             <CardContent className="p-6">
               <div className="flex items-start space-x-4">
                 <div className="w-10 h-10 bg-gray-200 rounded-full"></div>
@@ -125,7 +110,7 @@ export function ReviewList({ productId, refreshTrigger }: ReviewListProps) {
       <div className="flex items-center justify-between">
         <h3 className="text-lg font-semibold">Customer Reviews ({reviews.length})</h3>
         <select
-        title="Sort reviews"
+          title="Sort reviews"
           value={sortBy}
           onChange={(e) => setSortBy(e.target.value as any)}
           className="px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -141,8 +126,6 @@ export function ReviewList({ productId, refreshTrigger }: ReviewListProps) {
       <div className="space-y-4">
         {reviews.map((review, idx) => {
           const reviewKey = makeReviewKey(review, idx)
-
-          console.log("[v0] ReviewList key:", reviewKey, { id: review?.id, idx })
 
           return (
             <Card key={reviewKey} className="hover:shadow-md transition-shadow">
@@ -179,7 +162,7 @@ export function ReviewList({ productId, refreshTrigger }: ReviewListProps) {
                       <div className="flex items-center">
                         {Array.from({ length: 5 }).map((_, i) => (
                           <Star
-                            key={`${reviewKey}-star-${i}`}
+                            key={`star-${review.id}-${i}`}
                             className={`h-4 w-4 ${i < review.rating ? "text-yellow-400 fill-current" : "text-gray-300"}`}
                           />
                         ))}
@@ -213,22 +196,27 @@ export function ReviewList({ productId, refreshTrigger }: ReviewListProps) {
                               >
                                 {review.images?.slice(0, isExpanded ? undefined : 4).map((imageUrl, imageIdx) => (
                                   <div
-                                    key={`${reviewKey}-img-${imageIdx}`}
+                                    key={`img-${review.id}-${imageIdx}`}
                                     className="relative rounded-lg overflow-hidden bg-gray-100 cursor-pointer hover:opacity-90 transition-opacity aspect-square"
-                                    onClick={() => setExpandedImages((prev) => ({ ...prev, [expKey]: !prev[expKey] }))}
+                                    onClick={() => toggleImageExpansion(review.id)}
                                   >
-                                    <Image
-                                      src={imageUrl || "/placeholder.svg"}
-                                      alt={`Review image ${imageIdx + 1}`}
-                                      fill
-                                      className="object-cover"
-                                    />
+                                    {imageUrl ? (
+                                      <Image
+                                        src={imageUrl || "/placeholder.svg"}
+                                        alt={`Review image ${imageIdx + 1}`}
+                                        fill
+                                        className="object-cover"
+                                        unoptimized={imageUrl.startsWith("data:")}
+                                      />
+                                    ) : (
+                                      <div className="w-full h-full bg-gray-200" />
+                                    )}
                                   </div>
                                 ))}
                                 {!isExpanded && review.images.length > 4 && (
                                   <div
                                     className="aspect-square rounded-lg bg-gray-100 flex items-center justify-center cursor-pointer hover:bg-gray-200 transition-colors"
-                                    onClick={() => setExpandedImages((prev) => ({ ...prev, [expKey]: true }))}
+                                    onClick={() => toggleImageExpansion(review.id)}
                                   >
                                     <span className="text-sm font-medium text-gray-600">
                                       +{review.images.length - 4} more
@@ -238,33 +226,18 @@ export function ReviewList({ productId, refreshTrigger }: ReviewListProps) {
                               </div>
 
                               {review.images.length > 4 && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => setExpandedImages((prev) => ({ ...prev, [expKey]: !prev[expKey] }))}
-                                  className="text-blue-600 hover:text-blue-700"
+                                <button
+                                  onClick={() => toggleImageExpansion(review.id)}
+                                  className="text-sm font-medium text-blue-600 hover:text-blue-700"
                                 >
                                   {isExpanded ? "Show less" : `View all ${review.images.length} photos`}
-                                </Button>
+                                </button>
                               )}
                             </>
                           )
                         })()}
                       </div>
                     )}
-
-                    {/* Helpful Button */}
-                    <div className="flex items-center space-x-4 pt-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleHelpful(review.id)}
-                        className="text-gray-600 hover:text-gray-800"
-                      >
-                        <ThumbsUp className="h-4 w-4 mr-1" />
-                        Helpful ({review.helpful_count})
-                      </Button>
-                    </div>
                   </div>
                 </div>
               </CardContent>
