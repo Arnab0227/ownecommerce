@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS products (
   sku VARCHAR(100) UNIQUE,
   material VARCHAR(255),
   care_instructions TEXT,
+  featured_collections TEXT DEFAULT '[]',
   rating DECIMAL(3,2) DEFAULT 0, -- Added rating column
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

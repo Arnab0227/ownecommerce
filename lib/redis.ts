@@ -101,7 +101,6 @@ export class RedisCache {
       }
 
       const data = await response.json()
-      console.log(`[Redis] Raw response for ${key}:`, { data, resultType: typeof data?.result })
 
       // The Upstash REST API returns { result: <value> } where value is a string
       if (!data || data.result === null || data.result === undefined) {
@@ -111,10 +110,8 @@ export class RedisCache {
 
       // If result is a string, try to parse as JSON
       if (typeof data.result === "string") {
-        console.log(`[Redis] Parsing string result for ${key}:`, data.result.substring(0, 100))
         try {
           const parsed = JSON.parse(data.result) as T
-          console.log(`[Redis] Successfully parsed ${key}:`, { parsed, isArray: Array.isArray(parsed) })
           return parsed
         } catch (parseError) {
           console.error(`[Redis] Failed to parse JSON for ${key}:`, parseError, "Raw value:", data.result)
@@ -128,7 +125,6 @@ export class RedisCache {
           console.log(`[Redis] Error in result for ${key}:`, data.result.error)
           return null
         }
-        console.log(`[Redis] Returning object result for ${key}`)
         return data.result as T
       }
 

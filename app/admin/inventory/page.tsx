@@ -8,18 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Badge } from "@/components/ui/badge"
 import { useAuth } from "@/hooks/use-firebase-auth"
 import { useToast } from "@/hooks/use-toast"
-import {
-  Package,
-  AlertTriangle,
-  TrendingDown,
-  TrendingUp,
-  Search,
-  Filter,
-  Plus,
-  Minus,
-  Loader2,
-  AlertCircle,
-} from "lucide-react"
+import { Package, AlertTriangle, TrendingDown, TrendingUp, Search, Filter, Plus, Minus, Loader2, AlertCircle } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
@@ -39,6 +28,7 @@ interface InventoryItem {
   supplier: string
   last_restocked: string
   status: "in_stock" | "low_stock" | "out_of_stock"
+  featured_collections?: string
 }
 
 interface StockMovement {
@@ -107,6 +97,7 @@ export default function AdminInventoryPage() {
           supplier: "Textile Mills Ltd",
           last_restocked: "2024-01-05T10:00:00Z",
           status: "in_stock",
+          featured_collections: JSON.stringify(["womens-hot-pick", "traditional-ethnic"]),
         },
         {
           id: "2",
@@ -152,6 +143,7 @@ export default function AdminInventoryPage() {
           supplier: "Casual Wear Co",
           last_restocked: "2024-01-08T11:20:00Z",
           status: "in_stock",
+          featured_collections: JSON.stringify(["curated-casual", "handpicked"]),
         },
       ]
 
@@ -417,6 +409,39 @@ export default function AdminInventoryPage() {
                         <TableCell>
                           <div>
                             <p className="font-medium">{item.name}</p>
+                            {item.featured_collections && (
+                              <div className="mt-1 flex flex-wrap gap-1">
+                                {(() => {
+                                  try {
+                                    let collections: string[] = []
+                                    if (typeof item.featured_collections === 'string') {
+                                      collections = item.featured_collections ? JSON.parse(item.featured_collections) : []
+                                    } else if (Array.isArray(item.featured_collections)) {
+                                      collections = item.featured_collections
+                                    }
+
+                                    const collectionNames: { [key: string]: { label: string; color: string } } = {
+                                      "womens-hot-pick": { label: "Women's Hot Pick", color: "bg-pink-100 text-pink-700 text-xs" },
+                                      "traditional-ethnic": { label: "Traditional Ethnic", color: "bg-amber-100 text-amber-700 text-xs" },
+                                      "childrens-premium": { label: "Kids Premium", color: "bg-purple-100 text-purple-700 text-xs" },
+                                      "curated-casual": { label: "Casual Wear", color: "bg-blue-100 text-blue-700 text-xs" },
+                                      "handpicked": { label: "Handpicked", color: "bg-green-100 text-green-700 text-xs" },
+                                    }
+                                    
+                                    return collections.map((collectionId: string) => {
+                                      const collection = collectionNames[collectionId]
+                                      return collection ? (
+                                        <span key={collectionId} className={`px-2 py-1 rounded-full font-medium ${collection.color}`}>
+                                          {collection.label}
+                                        </span>
+                                      ) : null
+                                    })
+                                  } catch (error) {
+                                    return null
+                                  }
+                                })()}
+                              </div>
+                            )}
                             <p className="text-sm text-gray-600">
                               Last restocked: {new Date(item.last_restocked).toLocaleDateString("en-IN")}
                             </p>
@@ -461,7 +486,7 @@ export default function AdminInventoryPage() {
                               </DialogHeader>
                               <div className="space-y-4">
                                 <div>
-                                  <Label>Current Stock: {selectedItem?.current_stock}</Label>
+                                  <Label>Current Stock: {selectedItem?.current_stock || 0}</Label>
                                 </div>
 
                                 <div>
@@ -472,7 +497,7 @@ export default function AdminInventoryPage() {
                                       size="sm"
                                       onClick={() =>
                                         setAdjustmentQuantity(
-                                          Math.max(-selectedItem?.current_stock || 0, adjustmentQuantity - 1),
+                                          Math.max(-(selectedItem?.current_stock || 0), adjustmentQuantity - 1),
                                         )
                                       }
                                     >

@@ -11,27 +11,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useAuth } from "@/hooks/use-firebase-auth"
 import { useToast } from "@/hooks/use-toast"
-import {
-  Loader2,
-  Plus,
-  Edit,
-  Trash2,
-  Shield,
-  AlertCircle,
-  Package,
-  ShoppingCart,
-  Users,
-  TrendingUp,
-  BarChart3,
-  Settings,
-  Mail,
-  Calendar,
-  DollarSign,
-  Save,
-  X,
-  AlertTriangle,
-  MessageSquare,
-} from "lucide-react"
+import { Loader2, Plus, Edit, Trash2, Shield, AlertCircle, Package, ShoppingCart, Users, TrendingUp, BarChart3, Settings, Mail, Calendar, DollarSign, Save, X, AlertTriangle, MessageSquare } from 'lucide-react'
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import {
   AlertDialog,
@@ -44,6 +24,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import { parseFeaturedCollections, FEATURED_COLLECTIONS } from "@/lib/featured-collections"
 
 interface Product {
   id: string
@@ -55,6 +36,7 @@ interface Product {
   category: string
   stock_quantity: number // Changed from stock to stock_quantity to match API
   image_url: string
+  featured_collections?: string // Added featured_collections field
 }
 
 interface AdminStats {
@@ -88,6 +70,7 @@ export default function AdminPage() {
     category: "",
     stock_quantity: "", // Changed from stock to stock_quantity
     image_url: "",
+    featured_collections: [] as string[], // Added featured_collections
   })
 
   useEffect(() => {
@@ -193,6 +176,7 @@ export default function AdminPage() {
           category: formData.category,
           stock_quantity: Number.parseInt(formData.stock_quantity), // Changed from stock to stock_quantity
           image_url: formData.image_url || "/placeholder.svg?height=400&width=300",
+          featured_collections: formData.featured_collections, // Include collections in request
         }),
       })
 
@@ -225,6 +209,7 @@ export default function AdminPage() {
           category: "",
           stock_quantity: "", // Changed from stock to stock_quantity
           image_url: "",
+          featured_collections: [], // Reset collections
         })
         setEditingProduct(null)
 
@@ -247,15 +232,27 @@ export default function AdminPage() {
 
   const handleEdit = (product: Product) => {
     setEditingProduct(product)
+    let parsedCollections: string[] = []
+    
+    if (product.featured_collections) {
+      try {
+        parsedCollections = parseFeaturedCollections(product.featured_collections)
+      } catch (error) {
+        console.error("Error parsing featured_collections:", error)
+        parsedCollections = []
+      }
+    }
+
     setFormData({
       name: product.name || "",
-      sku: product.sku || "", // Changed from model_no to sku
+      sku: product.sku || "",
       description: product.description || "",
       price: product.price?.toString() || "",
       original_price: product.original_price?.toString() || "",
       category: product.category || "",
-      stock_quantity: product.stock_quantity?.toString() || "", // Changed from stock to stock_quantity
+      stock_quantity: product.stock_quantity?.toString() || "",
       image_url: product.image_url || "",
+      featured_collections: parsedCollections,
     })
   }
 
@@ -270,6 +267,7 @@ export default function AdminPage() {
       category: "",
       stock_quantity: "", // Changed from stock to stock_quantity
       image_url: "",
+      featured_collections: [], // Reset collections
     })
   }
 
@@ -337,7 +335,7 @@ export default function AdminPage() {
     }
   }
 
-  const handleInputChange = (field: string, value: string) => {
+  const handleInputChange = (field: string, value: string | string[]) => {
     setFormData((prev) => ({ ...prev, [field]: value }))
   }
 
@@ -744,6 +742,41 @@ export default function AdminPage() {
                     />
                   </div>
 
+                  <div>
+                    <Label>Featured Collections</Label>
+                    <div className="space-y-2 mt-2">
+                      {[
+                        { id: "womens-hot-pick", label: "Women's Hot Pick" },
+                        { id: "traditional-ethnic", label: "Traditional Ethnic Wear" },
+                        { id: "childrens-premium", label: "Children's Premium Line" },
+                        { id: "curated-casual", label: "Curated Casual Wear" },
+                        { id: "handpicked", label: "Handpicked Collection" }, // Added Handpicked collection
+                      ].map((collection) => (
+                        <label key={collection.id} className="flex items-center gap-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={formData.featured_collections.includes(collection.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                handleInputChange("featured_collections", [
+                                  ...formData.featured_collections,
+                                  collection.id,
+                                ])
+                              } else {
+                                handleInputChange(
+                                  "featured_collections",
+                                  formData.featured_collections.filter((c) => c !== collection.id),
+                                )
+                              }
+                            }}
+                            className="w-4 h-4 rounded"
+                          />
+                          <span className="text-sm">{collection.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
                   <Button type="submit" disabled={isSubmitting} className="w-full">
                     {isSubmitting ? (
                       <>
@@ -829,6 +862,28 @@ export default function AdminPage() {
                                 Stock: {product.stock_quantity} {/* Changed from stock to stock_quantity */}
                               </span>
                             </div>
+                            {/* Featured Collections Display */}
+                            {product.featured_collections && (
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {(() => {
+                                  try {
+                                    let collections: string[] = parseFeaturedCollections(product.featured_collections)
+                                    
+                                    return collections.map((collectionId: string) => {
+                                      const collection = FEATURED_COLLECTIONS[collectionId]
+                                      return collection ? (
+                                        <span key={collectionId} className={`text-xs px-2 py-1 rounded-full font-medium ${collection.badgeColor}`}>
+                                          {collection.label}
+                                        </span>
+                                      ) : null
+                                    })
+                                  } catch (error) {
+                                    console.error("Error rendering featured collections:", error)
+                                    return null
+                                  }
+                                })()}
+                              </div>
+                            )}
                           </div>
                           <div className="flex gap-2">
                             <Button

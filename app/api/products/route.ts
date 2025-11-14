@@ -48,6 +48,7 @@ export async function GET(request: Request) {
           sku,
           material,
           care_instructions,
+          featured_collections,
           created_at,
           updated_at
         FROM products 
@@ -70,6 +71,7 @@ export async function GET(request: Request) {
           sku,
           material,
           care_instructions,
+          featured_collections,
           created_at,
           updated_at
         FROM products 
@@ -81,6 +83,12 @@ export async function GET(request: Request) {
 
     const productsArray = Array.isArray(products) ? products : []
     console.log("[v0] Database query returned", productsArray.length, "products for category:", category || "all")
+    
+    if (productsArray.length > 0) {
+      productsArray.forEach((product: any) => {
+        console.log("[v0] Product", product.id, "featured_collections:", product.featured_collections)
+      })
+    }
 
     if (productsArray.length > 0 || true) {
       // Cache even empty arrays to prevent repeated DB queries
@@ -116,6 +124,7 @@ export async function POST(request: Request) {
       sku,
       material,
       care_instructions,
+      featured_collections,
     } = body
 
     if (!name || !description || !price || !category) {
@@ -127,6 +136,10 @@ export async function POST(request: Request) {
         { status: 400 },
       )
     }
+
+    const collectionsJson = Array.isArray(featured_collections) ? JSON.stringify(featured_collections) : "[]"
+
+    console.log("[v0] Creating product with featured_collections:", collectionsJson)
 
     const result = await sql`
       INSERT INTO products (
@@ -141,7 +154,8 @@ export async function POST(request: Request) {
         is_active,
         sku,
         material,
-        care_instructions
+        care_instructions,
+        featured_collections
       )
       VALUES (
         ${name},  
@@ -155,7 +169,8 @@ export async function POST(request: Request) {
         ${is_active !== false},
         ${sku},
         ${material || null},
-        ${care_instructions || null}
+        ${care_instructions || null},
+        ${collectionsJson}
       )
       ON CONFLICT (sku)
       DO UPDATE SET
@@ -164,6 +179,7 @@ export async function POST(request: Request) {
       RETURNING *
     `
 
+    console.log("[v0] Product created with featured_collections:", result[0].featured_collections)
     return NextResponse.json(result[0])
   } catch (error) {
     console.error("Error creating product:", error)
@@ -195,6 +211,7 @@ export async function PUT(request: Request) {
       sku,
       material,
       care_instructions,
+      featured_collections,
     } = body
 
     if (!id || !name || !description || !price || !category) {
@@ -206,6 +223,10 @@ export async function PUT(request: Request) {
         { status: 400 },
       )
     }
+
+    const collectionsJson = Array.isArray(featured_collections) ? JSON.stringify(featured_collections) : "[]"
+
+    console.log("[v0] Updating product", id, "with featured_collections:", collectionsJson)
 
     const result = await sql`
       UPDATE products SET
@@ -221,6 +242,7 @@ export async function PUT(request: Request) {
         sku = ${sku},
         material = ${material || null},
         care_instructions = ${care_instructions || null},
+        featured_collections = ${collectionsJson},
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ${id}
       RETURNING *
@@ -230,6 +252,7 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "Product not found" }, { status: 404 })
     }
 
+    console.log("[v0] Product updated with featured_collections:", result[0].featured_collections)
     return NextResponse.json(result[0])
   } catch (error) {
     console.error("Error updating product:", error)

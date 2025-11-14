@@ -14,6 +14,7 @@ export interface Product {
   stock?: number // Made optional to handle undefined values
   rating?: number
   model_no?: string
+  featured_collections?: string // Added featured_collections field to match database schema
 }
 
 interface CartItem extends Product {

@@ -3,8 +3,13 @@ import { neon } from "@neondatabase/serverless"
 
 const sql = neon(process.env.DATABASE_URL!)
 
-export async function GET(request: Request, { params }: { params: { id: string } }) {
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
+    const { id } = await params
+
     if (!process.env.DATABASE_URL) {
       return NextResponse.json({ error: "Database not configured" }, { status: 500 })
     }
@@ -24,10 +29,11 @@ export async function GET(request: Request, { params }: { params: { id: string }
         sku,
         material,
         care_instructions,
+        featured_collections,
         created_at, 
         updated_at
       FROM products 
-      WHERE id = ${params.id}
+      WHERE id = ${id}
     `
 
     if (result.length === 0) {
@@ -41,8 +47,13 @@ export async function GET(request: Request, { params }: { params: { id: string }
   }
 }
 
-export async function PUT(request: Request, { params }: { params: { id: string } }) {
+export async function PUT(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
+    const { id } = await params
+
     if (!process.env.DATABASE_URL) {
       return NextResponse.json({ error: "Database not configured" }, { status: 500 })
     }
@@ -62,6 +73,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
       sku,
       material,
       care_instructions,
+      featured_collections,
     } = body
 
     if (!name || !description || !price || !category) {
@@ -74,8 +86,12 @@ export async function PUT(request: Request, { params }: { params: { id: string }
       )
     }
 
+    const collectionsJson = Array.isArray(featured_collections)
+      ? JSON.stringify(featured_collections)
+      : featured_collections || "[]"
+
     const currentProduct = await sql`
-      SELECT stock_quantity FROM products WHERE id = ${params.id}
+      SELECT stock_quantity FROM products WHERE id = ${id}
     `
 
     if (currentProduct.length === 0) {
@@ -100,8 +116,9 @@ export async function PUT(request: Request, { params }: { params: { id: string }
         sku = ${sku},
         material = ${material || null},
         care_instructions = ${care_instructions || null},
+        featured_collections = ${collectionsJson},
         updated_at = CURRENT_TIMESTAMP
-      WHERE id = ${params.id}
+      WHERE id = ${id}
       RETURNING *
     `
 
@@ -119,7 +136,7 @@ export async function PUT(request: Request, { params }: { params: { id: string }
             created_by
           )
           VALUES (
-            ${params.id}, 
+            ${id}, 
             'adjustment', 
             'adjustment', 
             ${newStock - currentStock}, 
@@ -131,7 +148,6 @@ export async function PUT(request: Request, { params }: { params: { id: string }
         `
       } catch (stockError) {
         console.warn("Failed to log stock movement:", stockError)
-        // Continue with product update even if stock movement logging fails
       }
     }
 
@@ -143,12 +159,17 @@ export async function PUT(request: Request, { params }: { params: { id: string }
   }
 }
 
-export async function DELETE(request: Request, { params }: { params: { id: string } }) {
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
+    const { id } = await params
+
     const orderCheck = await sql`
       SELECT COUNT(*) as order_count
       FROM order_items oi
-      WHERE oi.product_id = ${params.id}
+      WHERE oi.product_id = ${id}
     `
 
     const orderCount = Number(orderCheck[0]?.order_count || 0)
@@ -157,18 +178,18 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
       return NextResponse.json(
         {
           error: "Cannot delete product with existing orders",
-          message: `This product has ${orderCount} order(s) and cannot be deleted to preserve order history. Consider marking it as inactive instead.`,
+          message: `This product has ${orderCount} order(s) and cannot be deleted to preserve order history.`,
           suggestion:
             "Use the edit function to set 'is_active' to false to hide this product from customers while preserving order history.",
           orderCount: orderCount,
         },
-        { status: 409 }, // Conflict status code
+        { status: 409 },
       )
     }
 
     const result = await sql`
       DELETE FROM products 
-      WHERE id = ${params.id}
+      WHERE id = ${id}
       RETURNING id, name
     `
 

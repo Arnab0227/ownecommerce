@@ -29,11 +29,14 @@ CREATE TABLE IF NOT EXISTS products (
   category VARCHAR(100) NOT NULL,
   image_url VARCHAR(500),
   stock_quantity INTEGER DEFAULT 0,
+  stock INTEGER DEFAULT 0,
   is_featured BOOLEAN DEFAULT false,
   is_active BOOLEAN DEFAULT true,
   sku VARCHAR(100) UNIQUE,
   material VARCHAR(255),
   care_instructions TEXT,
+  featured_collections TEXT DEFAULT '[]',
+  rating DECIMAL(3,2) DEFAULT 0, -- Added rating column
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

@@ -4,7 +4,7 @@ import { neon } from "@neondatabase/serverless"
 export async function GET() {
   try {
     if (!process.env.DATABASE_URL) {
-      console.log("No DATABASE_URL found, returning empty array")
+      console.log("[v0] No DATABASE_URL found for admin products API")
       return NextResponse.json([])
     }
 
@@ -25,6 +25,7 @@ export async function GET() {
         p.sku,
         p.material,
         p.care_instructions,
+        p.featured_collections,
         p.created_at,
         p.updated_at,
         COALESCE(res.reserved_stock, 0) AS reserved_stock
@@ -45,9 +46,21 @@ export async function GET() {
       const available = Math.max(0, current - reserved)
       const reorder_level = 10
       const status = current === 0 ? "out_of_stock" : current <= reorder_level ? "low_stock" : "in_stock"
+      
+      let collections = []
+      try {
+        collections = typeof product.featured_collections === 'string' 
+          ? JSON.parse(product.featured_collections) 
+          : Array.isArray(product.featured_collections) 
+            ? product.featured_collections 
+            : []
+      } catch (e) {
+        collections = []
+      }
 
       return {
         ...product,
+        featured_collections: collections,
         available_stock: available,
         status,
         reorder_level,
@@ -56,7 +69,7 @@ export async function GET() {
 
     return NextResponse.json(productsWithStatus)
   } catch (error) {
-    console.error("Error fetching products:", error)
+    console.error("[v0] Error fetching admin products:", error)
     return NextResponse.json({ error: "Failed to fetch products" }, { status: 500 })
   }
 }
@@ -83,6 +96,7 @@ export async function POST(request: Request) {
       sku,
       material,
       care_instructions,
+      featured_collections, // Added featured_collections support
     } = body
 
     if (!name || !description || !price || !category) {
@@ -94,6 +108,8 @@ export async function POST(request: Request) {
         { status: 400 },
       )
     }
+
+    const collectionsJson = Array.isArray(featured_collections) ? JSON.stringify(featured_collections) : "[]" // Parse collections array
 
     const result = await sql`
       INSERT INTO products (
@@ -108,7 +124,8 @@ export async function POST(request: Request) {
         is_active,
         sku,
         material,
-        care_instructions
+        care_instructions,
+        featured_collections
       )
       VALUES (
         ${name},  
@@ -122,7 +139,8 @@ export async function POST(request: Request) {
         ${is_active !== false},
         ${sku},
         ${material || null},
-        ${care_instructions || null}
+        ${care_instructions || null},
+        ${collectionsJson}
       )
       RETURNING *
     `
@@ -164,6 +182,7 @@ export async function PUT(request: Request) {
       sku,
       material,
       care_instructions,
+      featured_collections, // Added featured_collections support
     } = body
 
     if (!id || !name || !description || !price || !category) {
@@ -180,6 +199,8 @@ export async function PUT(request: Request) {
     const originalProducts = await sql2`SELECT category FROM products WHERE id = ${id}`
     const oldCategory = originalProducts[0]?.category
 
+    const collectionsJson = Array.isArray(featured_collections) ? JSON.stringify(featured_collections) : "[]" // Parse collections array
+
     const result = await sql`
       UPDATE products SET
         name = ${name},
@@ -194,6 +215,7 @@ export async function PUT(request: Request) {
         sku = ${sku},
         material = ${material || null},
         care_instructions = ${care_instructions || null},
+        featured_collections = ${collectionsJson},
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ${id}
       RETURNING *

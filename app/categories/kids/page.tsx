@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useSearchParams } from 'next/navigation'
 import { ProductCard } from "@/components/product-card"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -8,10 +9,13 @@ import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Slider } from "@/components/ui/slider"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Filter, SlidersHorizontal, Baby, Users, Sliders } from "lucide-react"
+import { Filter, SlidersHorizontal, Baby, Users, Sliders } from 'lucide-react'
 import type { Product } from "@/types"
 
 export default function KidsCategoryPage() {
+  const searchParams = useSearchParams()
+  const collectionFilter = searchParams.get("collection")
+
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedCategory, setSelectedCategory] = useState("all")
@@ -50,7 +54,7 @@ export default function KidsCategoryPage() {
         const data = await response.json()
         if (Array.isArray(data)) {
           setProducts(data)
-          console.log("[v0] Fetched kids products:", data)
+          console.log("[v0] Fetched kids products:", data.length, "products")
         } else {
           console.error("[v0] API returned non-array response:", data)
           setProducts([])
@@ -80,7 +84,17 @@ export default function KidsCategoryPage() {
     // Rating filter
     const ratingMatch = ratingFilter === 0 || (product.rating || 0) >= ratingFilter
 
-    return categoryMatch && priceMatch && materialMatch && ratingMatch
+    let collectionMatch = true
+    if (collectionFilter) {
+      try {
+        const collections = product.featured_collections ? JSON.parse(product.featured_collections) : []
+        collectionMatch = collections.includes(collectionFilter)
+      } catch {
+        collectionMatch = false
+      }
+    }
+
+    return categoryMatch && priceMatch && materialMatch && ratingMatch && collectionMatch
   })
 
   const sortedProducts = [...filteredProducts].sort((a, b) => {
@@ -120,6 +134,11 @@ export default function KidsCategoryPage() {
     }
   }
 
+  const getPageTitle = () => {
+    if (collectionFilter === "childrens-premium") return "Children's Premium Line"
+    return "Kids' Collection"
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Hero Section */}
@@ -129,7 +148,7 @@ export default function KidsCategoryPage() {
             <Baby className="h-12 w-12 mr-4" />
             <Users className="h-8 w-8" />
           </div>
-          <h1 className="text-4xl md:text-5xl font-bold mb-4">Kids' Collection</h1>
+          <h1 className="text-4xl md:text-5xl font-bold mb-4">{getPageTitle()}</h1>
           <p className="text-xl opacity-90 max-w-2xl mx-auto">Adorable and comfortable clothing for your little ones</p>
         </div>
       </div>
@@ -281,7 +300,7 @@ export default function KidsCategoryPage() {
               <div>
                 <h2 className="text-2xl font-bold text-gray-900">
                   {selectedCategory === "all"
-                    ? "All Kids' Items"
+                    ? getPageTitle()
                     : categories.find((c) => c.id === selectedCategory)?.name}
                 </h2>
                 <p className="text-gray-600">{sortedProducts.length} products found</p>

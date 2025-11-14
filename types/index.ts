@@ -15,6 +15,7 @@ export interface Product {
   isActive?: boolean
   createdAt?: string
   updatedAt?: string
+  featured_collections?: string
 }
 
 export interface User {

@@ -25,6 +25,7 @@ export async function getProductById(id: string | number): Promise<Product | nul
       rating: product.rating || 0,
       stock: product.stock_quantity || product.stock || 0,
       model_no: product.model_no,
+      featured_collections: product.featured_collections ? JSON.parse(product.featured_collections) : [],
     } as Product
   } catch (error) {
     console.error("[v0] Error fetching product:", error)

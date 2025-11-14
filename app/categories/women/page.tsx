@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useSearchParams } from 'next/navigation'
 import { ProductCard } from "@/components/product-card"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -8,10 +9,13 @@ import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Slider } from "@/components/ui/slider"
 import { Checkbox } from "@/components/ui/checkbox"
-import { Filter, SlidersHorizontal, Sliders } from "lucide-react"
+import { Filter, SlidersHorizontal, Sliders } from 'lucide-react'
 import type { Product } from "@/types"
 
 export default function WomenCategoryPage() {
+  const searchParams = useSearchParams()
+  const collectionFilter = searchParams.get("collection")
+
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedCategory, setSelectedCategory] = useState("all")
@@ -32,7 +36,7 @@ export default function WomenCategoryPage() {
       const response = await fetch("/api/products?category=women")
       if (response.ok) {
         const data = await response.json()
-        console.log("[v0] Women page received products:", data)
+        console.log("[v0] Women page received products:", data.length, "products")
         if (Array.isArray(data)) {
           setProducts(data)
         } else {
@@ -51,6 +55,18 @@ export default function WomenCategoryPage() {
   const filteredProducts = products.filter((product) => {
     const priceMatch = product.price >= priceRange[0] && product.price <= priceRange[1]
 
+    let collectionMatch = true
+    if (collectionFilter) {
+      try {
+        const collections = product.featured_collections ? JSON.parse(product.featured_collections) : []
+        collectionMatch = collections.includes(collectionFilter)
+        console.log(`[v0] Product ${product.id} collections:`, collections, "filter:", collectionFilter, "match:", collectionMatch)
+      } catch (error) {
+        console.error(`[v0] Error parsing collections for product ${product.id}:`, error, "raw value:", product.featured_collections)
+        collectionMatch = false
+      }
+    }
+
     let materialMatch = true
     if (materialFilter.length > 0) {
       const productText = `${product.name} ${product.description}`.toLowerCase()
@@ -59,7 +75,7 @@ export default function WomenCategoryPage() {
 
     const ratingMatch = ratingFilter === 0 || (product.rating || 0) >= ratingFilter
 
-    return priceMatch && materialMatch && ratingMatch
+    return priceMatch && collectionMatch && materialMatch && ratingMatch
   })
 
   const sortedProducts = [...filteredProducts].sort((a, b) => {
@@ -99,11 +115,18 @@ export default function WomenCategoryPage() {
     }
   }
 
+  const getPageTitle = () => {
+    if (collectionFilter === "womens-hot-pick") return "Women's Hot Pick"
+    if (collectionFilter === "traditional-ethnic") return "Traditional Ethnic Wear"
+    if (collectionFilter === "curated-casual") return "Curated Casual Wear"
+    return "Women's Collection"
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="bg-gradient-to-r from-pink-600 to-purple-600 text-white py-16">
         <div className="container mx-auto px-4 text-center">
-          <h1 className="text-4xl md:text-5xl font-bold mb-4">Women's Collection</h1>
+          <h1 className="text-4xl md:text-5xl font-bold mb-4">{getPageTitle()}</h1>
           <p className="text-xl opacity-90 max-w-2xl mx-auto">
             Discover our curated selection of elegant and trendy women's fashion
           </p>
@@ -231,7 +254,7 @@ export default function WomenCategoryPage() {
           <div className="lg:col-span-3">
             <div className="flex justify-between items-center mb-6">
               <div>
-                <h2 className="text-2xl font-bold text-gray-900">Women's Collection</h2>
+                <h2 className="text-2xl font-bold text-gray-900">{getPageTitle()}</h2>
                 <p className="text-gray-600">{sortedProducts.length} products found</p>
               </div>
 

@@ -24,12 +24,24 @@ export function ProductGrid() {
       const data = await res.json()
 
       if (Array.isArray(data) && data.length >= 0) {
-        setProducts(data)
+        const handpickedProducts = data.filter((product: Product) => {
+          try {
+            const collections = product.featured_collections ? JSON.parse(product.featured_collections) : []
+            console.log("[v0] ProductGrid filtering product", product.id, "collections:", collections)
+            return collections.includes("handpicked")
+          } catch (e) {
+            console.error("[v0] Error parsing collections for product", product.id, "error:", e)
+            return false
+          }
+        }).slice(0, 6)
+        
+        console.log("[v0] ProductGrid filtered to", handpickedProducts.length, "handpicked products from", data.length, "total")
+        setProducts(handpickedProducts)
         setError(false)
       } else {
         console.error("[v0] API returned non-array response:", data)
         setProducts([])
-        setError(false) // Don't show error, just show empty state
+        setError(false)
       }
     } catch (err) {
       console.error("[v0] Error fetching products:", err)
