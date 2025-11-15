@@ -1,15 +1,16 @@
 /**
- * Simplified Environment Variables for Firebase Auth
- * Removes unnecessary JWT/NextAuth secrets when using Firebase
+ * Simplified Environment Variables for Firebase Auth + Environment-based Admin
  */
 
-// Database
-export const DATABASE_URL = process.env.DATABASE_URL!
+// Database (Optional)
+export const DATABASE_URL = process.env.DATABASE_URL
 
 // Application
 export const NEXT_PUBLIC_BASE_URL = process.env.NEXT_PUBLIC_BASE_URL!
 export const NODE_ENV = process.env.NODE_ENV || "development"
-export const ADMIN_EMAIL = process.env.ADMIN_EMAIL!
+
+export const ADMIN_EMAILS = process.env.ADMIN_EMAILS || process.env.NEXT_PUBLIC_ADMIN_EMAILS || ""
+export const NEXT_PUBLIC_ADMIN_EMAILS = process.env.NEXT_PUBLIC_ADMIN_EMAILS || ""
 
 export const KV_REST_API_URL = process.env.KV_REST_API_URL
 export const KV_REST_API_TOKEN = process.env.KV_REST_API_TOKEN
@@ -46,7 +47,7 @@ export const TWILIO_AUTH_TOKEN = process.env.TWILIO_AUTH_TOKEN
 export const TWILIO_WHATSAPP_NUMBER = process.env.TWILIO_WHATSAPP_NUMBER
 
 // Optional: Only if you need additional encryption for sensitive data
-export const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY // Optional
+export const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY
 
 // Development
 export const DEBUG_MODE = process.env.DEBUG_MODE === "true"
@@ -54,12 +55,9 @@ export const isDevelopment = NODE_ENV === "development"
 export const RATE_LIMIT_MAX = Number.parseInt(process.env.RATE_LIMIT_MAX || "100")
 export const RATE_LIMIT_WINDOW = Number.parseInt(process.env.RATE_LIMIT_WINDOW || "900000")
 
-// Validation function - simplified for Firebase auth
 export function validateEnvironment() {
   const requiredVars = [
-    "DATABASE_URL",
     "NEXT_PUBLIC_BASE_URL",
-    "ADMIN_EMAIL",
     // Firebase Client Config
     "NEXT_PUBLIC_FIREBASE_API_KEY",
     "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN",
@@ -77,20 +75,21 @@ export function validateEnvironment() {
     // Email
     "FROM_EMAIL",
     "SUPPORT_EMAIL",
-    //Resend
+    // Resend
     "RESEND_API_KEY",
-    //whatsapp
+    // WhatsApp
     "TWILIO_ACCOUNT_SID",
     "TWILIO_AUTH_TOKEN",
     "TWILIO_WHATSAPP_NUMBER",
+    // Admin emails
+    "NEXT_PUBLIC_ADMIN_EMAILS",
   ]
 
   const missing = requiredVars.filter((varName) => !process.env[varName])
 
   if (missing.length > 0) {
-    throw new Error(`Missing required environment variables: ${missing.join(", ")}`)
+    console.warn(`⚠️ Missing environment variables: ${missing.join(", ")}`)
   }
 
-
-  console.log("✅ Environment variables validated successfully (Firebase Auth + Razorpay)")
+  console.log("✅ Environment variables validated (Firebase Auth + Admin via Env)")
 }

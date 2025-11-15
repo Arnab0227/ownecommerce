@@ -869,10 +869,10 @@ export default function AdminPage() {
                                   try {
                                     let collections: string[] = parseFeaturedCollections(product.featured_collections)
                                     
-                                    return collections.map((collectionId: string) => {
-                                      const collection = FEATURED_COLLECTIONS[collectionId]
+                                    return collections.map((collectionId: string, i: number) => {
+                                      const collection = FEATURED_COLLECTIONS[collectionId as keyof typeof FEATURED_COLLECTIONS]
                                       return collection ? (
-                                        <span key={collectionId} className={`text-xs px-2 py-1 rounded-full font-medium ${collection.badgeColor}`}>
+                                        <span key={i} className={`text-xs px-2 py-1 rounded-full font-medium ${collection.badgeColor}`}>
                                           {collection.label}
                                         </span>
                                       ) : null

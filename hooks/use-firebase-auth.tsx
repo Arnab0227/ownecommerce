@@ -14,41 +14,45 @@ import {
   FacebookAuthProvider,
 } from "firebase/auth"
 import { auth } from "../lib/firebase-client"
+import { isUserAdmin } from "@/lib/auth-utils"
 
 interface AuthContextType {
   user: User | null
   loading: boolean
+  isAdmin: boolean
   signIn: (email: string, password: string) => Promise<void>
   signUp: (email: string, password: string, name?: string) => Promise<void>
   signInWithGoogle: () => Promise<void>
   signInWithFacebook: () => Promise<void>
   signOut: () => Promise<void>
-  isAdmin: boolean
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
+  isAdmin: false,
   signIn: async () => {},
   signUp: async () => {},
   signInWithGoogle: async () => {},
   signInWithFacebook: async () => {},
   signOut: async () => {},
-  isAdmin: false,
 })
 
 export function AuthProvider({ children }: { children: React.ReactNode }): React.ReactElement {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
+  const [isAdmin, setIsAdmin] = useState(false)
 
-  const adminEmail = process.env.NEXT_PUBLIC_ADMIN_EMAIL
-  const isAdmin = user?.email === adminEmail
+  const checkAdminStatus = (userEmail: string | null | undefined) => {
+    if (!userEmail) {
+      setIsAdmin(false)
+      return
+    }
 
-  useEffect(() => {
-    console.log("Admin Email from env:", adminEmail)
-    console.log("Current user email:", user?.email)
-    console.log("Is Admin:", isAdmin)
-  }, [user, adminEmail, isAdmin])
+    const adminStatus = isUserAdmin(userEmail)
+    setIsAdmin(adminStatus)
+    console.log(`[v0] Admin status for ${userEmail}: ${adminStatus}`)
+  }
 
   useEffect(() => {
     if (!auth) {
@@ -58,11 +62,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
     }
 
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      console.log("Auth state changed:", user?.email)
+      console.log("[v0] Auth state changed:", user?.email)
       setUser(user)
-      setLoading(false)
 
       if (user) {
+        checkAdminStatus(user.email)
         await mergeGuestCartWithUserCart(user.uid)
 
         // Check if user was trying to checkout
@@ -71,7 +75,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
           localStorage.removeItem("checkout-redirect")
           window.location.href = "/checkout"
         }
+      } else {
+        setIsAdmin(false)
       }
+
+      setLoading(false)
     })
 
     return unsubscribe
@@ -87,12 +95,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
 
       console.log("[v0] Merging guest cart with user cart:", guestItems)
 
-      // Send guest cart items to server to merge with user's cart
       const response = await fetch("/api/cart/merge", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userId,
           guestItems,
@@ -101,8 +106,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
 
       if (response.ok) {
         console.log("[v0] Cart merged successfully")
-        // Keep the cart in localStorage for immediate use
-        // It will be synced with the database
       } else {
         console.error("[v0] Failed to merge cart")
       }
@@ -182,11 +185,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
         console.log("[v0] Cleared user addresses from localStorage")
       }
 
-      // Dispatch cart update event to update UI immediately
       window.dispatchEvent(new CustomEvent("cartUpdated", { detail: { items: [], count: 0 } }))
 
       await firebaseSignOut(auth)
       console.log("[v0] User signed out successfully")
+      setIsAdmin(false)
     } catch (error) {
       console.error("Sign out error:", error)
       throw error
@@ -196,12 +199,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }): React
   const value: AuthContextType = {
     user,
     loading,
+    isAdmin,
     signIn,
     signUp,
     signInWithGoogle,
     signInWithFacebook,
     signOut,
-    isAdmin,
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

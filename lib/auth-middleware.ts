@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import { adminAuth } from "./firebase-admin"
+import { isUserAdmin } from "./auth-utils"
 
 export async function verifyFirebaseToken(request: NextRequest) {
   try {
@@ -40,16 +41,10 @@ export async function requireAdmin(request: NextRequest) {
       return NextResponse.json({ error: "Invalid user data" }, { status: 401 })
     }
 
-    const adminEmail = process.env.ADMIN_EMAIL || process.env.NEXT_PUBLIC_ADMIN_EMAIL
-    console.log(`[v0] Admin check - User email: ${user.email}, Admin email: ${adminEmail}`)
-
-    if (!adminEmail) {
-      console.error("[v0] No admin email configured in environment variables")
-      return NextResponse.json({ error: "Admin configuration missing" }, { status: 500 })
-    }
-
-    if (user.email !== adminEmail) {
-      console.log(`[v0] Admin access denied for ${user.email}, expected ${adminEmail}`)
+    const admin = await isUserAdmin(user.email)
+    
+    if (!admin) {
+      console.log(`[v0] Admin access denied for ${user.email}`)
       return NextResponse.json({ error: "Admin access required" }, { status: 403 })
     }
 
