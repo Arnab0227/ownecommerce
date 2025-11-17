@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useRouter } from "next/navigation"
+import { useRouter } from 'next/navigation'
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -12,7 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { useCart } from "@/hooks/use-cart"
 import { useAuth } from "@/hooks/use-firebase-auth"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2, MapPin, CreditCard, Truck, Shield, Plus, AlertCircle } from "lucide-react"
+import { Loader2, MapPin, CreditCard, Truck, Shield, Plus, AlertCircle } from 'lucide-react'
 import { addPurchase } from "@/lib/local-storage-purchases"
 
 declare global {
@@ -931,8 +931,8 @@ export default function CheckoutPage() {
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div className="space-y-3">
-                    {items.map((item) => (
-                      <div key={item.id} className="flex justify-between items-center">
+                    {items.map((item, index) => (
+                      <div key={`${item.id}-${index}`} className="flex justify-between items-center">
                         <div className="flex-1">
                           <div className="font-medium text-sm">{item.name}</div>
                           <div className="text-xs text-gray-600">Qty: {item.quantity}</div>

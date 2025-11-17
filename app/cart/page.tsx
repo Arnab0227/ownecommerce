@@ -2,11 +2,11 @@
 import { useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
+import { useRouter } from 'next/navigation'
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import { Minus, Plus, Trash2, ShoppingBag } from "lucide-react"
+import { Minus, Plus, Trash2, ShoppingBag } from 'lucide-react'
 import { useCart } from "@/hooks/use-cart"
 import { useAuth } from "@/hooks/use-firebase-auth"
 import { toast } from "@/hooks/use-toast"
@@ -90,9 +90,9 @@ export default function CartPage() {
               <CardTitle className="text-lg md:text-xl">Cart Items ({items.length})</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              {items.map((item) => (
+              {items.map((item, index) => (
                 <div
-                  key={item.id}
+                  key={`${item.id}-${index}`}
                   className="flex flex-col sm:flex-row items-start sm:items-center space-y-3 sm:space-y-0 sm:space-x-4 p-3 md:p-4 border rounded-lg"
                 >
                   <div className="flex items-center space-x-3 sm:space-x-4 w-full sm:w-auto">

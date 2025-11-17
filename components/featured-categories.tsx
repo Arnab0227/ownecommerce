@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
+import Image from "next/image"
 import { Card, CardContent } from "@/components/ui/card"
 import { ArrowRight, Crown } from 'lucide-react'
 import { FEATURED_COLLECTIONS, parseFeaturedCollections } from "@/lib/featured-collections"
@@ -22,6 +23,7 @@ interface Category {
   href: string
   products?: Product[]
   badgeColor?: string
+  categoryImage?: string
 }
 
 export function FeaturedCategories() {
@@ -55,6 +57,7 @@ export function FeaturedCategories() {
       href: "/categories/women?collection=womens-hot-pick",
       color: FEATURED_COLLECTIONS["womens-hot-pick"].bgColor,
       badgeColor: FEATURED_COLLECTIONS["womens-hot-pick"].badgeColor,
+      categoryImage: "/hotpick.jpg",
     },
     {
       id: "traditional-ethnic",
@@ -63,6 +66,7 @@ export function FeaturedCategories() {
       href: "/categories/women?collection=traditional-ethnic",
       color: FEATURED_COLLECTIONS["traditional-ethnic"].bgColor,
       badgeColor: FEATURED_COLLECTIONS["traditional-ethnic"].badgeColor,
+      categoryImage: "/traditional.jpg",
     },
     {
       id: "childrens-premium",
@@ -71,6 +75,7 @@ export function FeaturedCategories() {
       href: "/categories/kids?collection=childrens-premium",
       color: FEATURED_COLLECTIONS["childrens-premium"].bgColor,
       badgeColor: FEATURED_COLLECTIONS["childrens-premium"].badgeColor,
+      categoryImage: "/childrens.jpg",
     },
     {
       id: "curated-casual",
@@ -79,6 +84,7 @@ export function FeaturedCategories() {
       href: "/categories/women?collection=curated-casual",
       color: FEATURED_COLLECTIONS["curated-casual"].bgColor,
       badgeColor: FEATURED_COLLECTIONS["curated-casual"].badgeColor,
+      categoryImage: "/casual.jpg",
     },
   ]
 
@@ -122,22 +128,14 @@ export function FeaturedCategories() {
             <Link key={category.id} href={category.href}>
               <Card className="group hover:shadow-2xl transition-all duration-500 transform hover:-translate-y-3 overflow-hidden border-2 border-amber-200 bg-white h-full">
                 <div className="relative overflow-hidden">
-                  {category.products && category.products.length > 0 ? (
-                    <>
-                      <img
-                        src={category.products[0].image_url || "/placeholder.svg"}
-                        alt={category.title}
-                        className="w-full h-48 sm:h-56 object-cover group-hover:scale-110 transition-transform duration-500"
-                      />
-                      <div
-                        className={`absolute inset-0 bg-gradient-to-t ${category.color} opacity-20 group-hover:opacity-30 transition-opacity duration-500`}
-                      ></div>
-                    </>
-                  ) : (
-                    <div className={`w-full h-48 sm:h-56 bg-gradient-to-br ${category.color} flex items-center justify-center`}>
-                      <span className="text-white text-opacity-50 text-sm">No products yet</span>
-                    </div>
-                  )}
+                  <img
+                    src={category.categoryImage || category.products?.[0]?.image_url || "/placeholder.svg"}
+                    alt={category.title}
+                    className="w-full h-48 sm:h-56 object-cover group-hover:scale-110 transition-transform duration-500"
+                  />
+                  <div
+                    className={`absolute inset-0 bg-gradient-to-t ${category.color} opacity-20 group-hover:opacity-30 transition-opacity duration-500`}
+                  ></div>
                   <div className="absolute top-4 right-4 bg-white rounded-full p-2 shadow-lg">
                     <Crown className="h-5 w-5 text-amber-600" />
                   </div>
